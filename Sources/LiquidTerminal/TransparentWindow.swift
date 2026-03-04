@@ -23,4 +23,16 @@ class TransparentWindow: NSWindow {
     override var canBecomeMain: Bool {
         return true
     }
+    
+    override func mouseDown(with event: NSEvent) {
+        if event.clickCount == 2 {
+            let locationInWindow = event.locationInWindow
+            // If the double-click is in the top 50 pixels (title bar area)
+            if locationInWindow.y >= self.frame.height - 50 {
+                self.zoom(nil)
+                return
+            }
+        }
+        super.mouseDown(with: event)
+    }
 }

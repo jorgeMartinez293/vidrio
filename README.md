@@ -10,8 +10,8 @@ A modern, transparent terminal emulator for macOS built with Swift and [SwiftTer
 
 ## Preview
 
-![LiquidTerminal Screenshot](image2.png)
-![LiquidTerminal Screenshot 2](image1.png)
+![LiquidTerminal Screenshot](doc/image2.png)
+![LiquidTerminal Screenshot 2](doc/image1.png)
 
 ## Features
 
