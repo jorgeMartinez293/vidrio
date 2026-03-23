@@ -23,16 +23,6 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
         view.window?.makeFirstResponder(terminalView)
     }
     
-    override func viewDidLayout() {
-        super.viewDidLayout()
-        hideScroller()
-    }
-    
-    override func viewWillDisappear() {
-        super.viewWillDisappear()
-        cleanup()
-    }
-    
     /// Safely tears down the terminal process and delegate references.
     /// IMPORTANT: Do NOT remove views from the hierarchy here. SwiftTerm's
     /// TerminalView registers notification observers with [unowned self].
@@ -52,16 +42,6 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
     }
     
 
-    
-    func hideScroller() {
-        guard let terminalView = terminalView else { return }
-        for subview in terminalView.subviews {
-            if let scroller = subview as? NSScroller {
-                scroller.isHidden = true
-                scroller.alphaValue = 0
-            }
-        }
-    }
     
     func setupTerminal() {
         // Setup Visual Effect View for Blur
@@ -86,10 +66,13 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
         terminalView = LocalProcessTerminalView(frame: view.bounds)
         terminalView.translatesAutoresizingMaskIntoConstraints = false
         terminalView.processDelegate = self
-        
+        terminalView.scrollerEnabled = false
+
         // Stylization
         terminalView.wantsLayer = true
         terminalView.layer?.backgroundColor = NSColor.clear.cgColor
+        terminalView.layer?.cornerRadius = 16.0
+        terminalView.layer?.masksToBounds = true
         terminalView.nativeBackgroundColor = .clear
         terminalView.nativeForegroundColor = .white
         
@@ -122,6 +105,21 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
             env["PATH"] = "\(path):/usr/local/bin:/opt/homebrew/bin"
         } else {
             env["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/opt/homebrew/bin"
+        }
+        
+        // Inject UTF-8 Locale if missing to ensure proper multibyte character width handling
+        if env["LANG"] == nil && env["LC_ALL"] == nil && env["LC_CTYPE"] == nil {
+            let langCode = Locale.current.language.languageCode?.identifier ?? "en"
+            var defaultLang = "en_US.UTF-8"
+            switch langCode {
+            case "es": defaultLang = "es_ES.UTF-8"
+            case "fr": defaultLang = "fr_FR.UTF-8"
+            case "de": defaultLang = "de_DE.UTF-8"
+            case "it": defaultLang = "it_IT.UTF-8"
+            case "pt": defaultLang = "pt_BR.UTF-8"
+            default: defaultLang = "en_US.UTF-8"
+            }
+            env["LANG"] = defaultLang
         }
         
         // Change to user's home directory
