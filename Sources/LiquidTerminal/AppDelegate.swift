@@ -5,6 +5,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     
     // Keep strong references to windows to prevent deallocation
     var windows: Set<NSWindow> = []
+    // Monotonically increasing counter for window cascade offset
+    private var windowCount = 0
     
     func applicationDidFinishLaunching(_ notification: Notification) {
         print("Application did finish launching")
@@ -68,8 +70,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let screenSize = NSScreen.main?.frame.size ?? CGSize(width: 800, height: 600)
         let windowSize = CGSize(width: 800, height: 600)
         
-        // Offset new windows slightly if there are existing ones
-        let offset = CGFloat(windows.count * 20)
+        // Offset new windows with an ever-increasing counter so windows
+        // don't overlap even after previous ones have been closed
+        let offset = CGFloat(windowCount * 20)
+        windowCount += 1
         
         let initialX = (screenSize.width - windowSize.width) / 2
         let initialY = (screenSize.height - windowSize.height) / 2
