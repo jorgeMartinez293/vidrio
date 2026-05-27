@@ -2,6 +2,32 @@ import Testing
 import AppKit
 @testable import LiquidTerminal
 
+// MARK: - BlurMaterial Tests
+
+struct BlurMaterialTests {
+    @Test func testNoneHasNilMaterial() {
+        #expect(BlurMaterial.none.material == nil)
+    }
+
+    @Test func testHudWindowMapsToMaterial() {
+        #expect(BlurMaterial.hudWindow.material == .hudWindow)
+    }
+
+    @Test func testAllCasesHaveDisplayNames() {
+        for material in BlurMaterial.allCases {
+            #expect(!material.displayName.isEmpty)
+        }
+    }
+
+    @Test func testCodableRoundTrip() throws {
+        for material in BlurMaterial.allCases {
+            let data = try JSONEncoder().encode(material)
+            let decoded = try JSONDecoder().decode(BlurMaterial.self, from: data)
+            #expect(decoded == material)
+        }
+    }
+}
+
 // MARK: - RGBAColor Tests
 
 struct RGBAColorTests {
