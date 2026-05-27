@@ -1,0 +1,33 @@
+import Testing
+import AppKit
+@testable import LiquidTerminal
+
+struct WindowSizeCalculatorTests {
+    private func testFont() -> NSFont {
+        NSFont(name: "Menlo", size: 14) ?? .monospacedSystemFont(ofSize: 14, weight: .regular)
+    }
+
+    @Test func testCellSizeIsPositive() {
+        let cell = WindowSizeCalculator.cellSize(for: testFont())
+        #expect(cell.width > 0)
+        #expect(cell.height > 0)
+    }
+
+    @Test func testWindowSizeMatchesFormula() {
+        let font = testFont()
+        let cell = WindowSizeCalculator.cellSize(for: font)
+        let size = WindowSizeCalculator.windowSize(cols: 80, rows: 24, font: font)
+        #expect(abs(size.width - (cell.width * 80 + WindowSizeCalculator.horizontalInset)) < 0.5)
+        #expect(abs(size.height - (cell.height * 24 + WindowSizeCalculator.verticalInset)) < 0.5)
+    }
+
+    @Test func testDefaultSettingsProduceReasonableWindow() {
+        let d = TerminalSettings.defaults
+        let font = NSFont(name: d.fontName, size: d.fontSize)
+            ?? .monospacedSystemFont(ofSize: d.fontSize, weight: .regular)
+        let size = WindowSizeCalculator.windowSize(cols: d.cols, rows: d.rows, font: font)
+        // Should land near the old 800×600 window.
+        #expect((700.0...900.0).contains(size.width), "width was \(size.width)")
+        #expect((520.0...680.0).contains(size.height), "height was \(size.height)")
+    }
+}
