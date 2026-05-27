@@ -12,12 +12,29 @@ let package = Package(
          .package(path: "Vendor/SwiftTerm"),
     ],
     targets: [
-        // Targets are the basic building blocks of a package, defining a module or a test suite.
-        // Targets can depend on other targets in this package and products from dependencies.
         .executableTarget(
             name: "LiquidTerminal",
             dependencies: [
                 .product(name: "SwiftTerm", package: "SwiftTerm")
+            ]
+        ),
+        .testTarget(
+            name: "LiquidTerminalTests",
+            dependencies: ["LiquidTerminal"],
+            swiftSettings: [
+                .unsafeFlags([
+                    "-F", "/Library/Developer/CommandLineTools/Library/Developer/Frameworks"
+                ])
+            ],
+            linkerSettings: [
+                .unsafeFlags([
+                    "-F", "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+                    "-framework", "Testing",
+                    "-Xlinker", "-rpath",
+                    "-Xlinker", "/Library/Developer/CommandLineTools/Library/Developer/Frameworks",
+                    "-Xlinker", "-rpath",
+                    "-Xlinker", "/Library/Developer/CommandLineTools/Library/Developer/usr/lib"
+                ])
             ]
         ),
     ]
