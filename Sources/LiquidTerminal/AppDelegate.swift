@@ -83,8 +83,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     
     func createNewWindow(scriptPath: String? = nil) {
+        let settings = SettingsStore.shared.current
+        let font = NSFont(name: settings.fontName, size: CGFloat(settings.fontSize))
+            ?? .monospacedSystemFont(ofSize: CGFloat(settings.fontSize), weight: .regular)
+
         let screenSize = NSScreen.main?.frame.size ?? CGSize(width: 800, height: 600)
-        let windowSize = CGSize(width: 800, height: 600)
+        let windowSize = WindowSizeCalculator.windowSize(cols: settings.cols, rows: settings.rows, font: font)
 
         // Offset new windows with an ever-increasing counter so windows
         // don't overlap even after previous ones have been closed
@@ -105,6 +109,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         newWindow.delegate = self // Track closing
 
         let viewController = TerminalViewController()
+        viewController.settings = settings
         viewController.scriptPath = scriptPath
         newWindow.contentViewController = viewController
 
