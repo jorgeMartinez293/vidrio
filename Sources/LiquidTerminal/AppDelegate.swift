@@ -7,17 +7,33 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var windows: Set<NSWindow> = []
     // Monotonically increasing counter for window cascade offset
     private var windowCount = 0
-    
+    // Set to true when Launch Services hands us files at startup so we don't
+    // also create an empty default window.
+    private var didReceiveOpenFiles = false
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         print("Application did finish launching")
-        
+
         setupMenu()
-        createNewWindow()
-        
+        if !didReceiveOpenFiles {
+            createNewWindow()
+        }
+
         // async activation
         DispatchQueue.main.async {
             NSApp.activate(ignoringOtherApps: true)
         }
+    }
+
+    // Called by Launch Services when the app is opened with one or more files
+    // (e.g. `open -a LiquidTerminal foo.sh` or double-clicking a script). Each
+    // file is executed in its own window via `/bin/bash <path>`.
+    func application(_ sender: NSApplication, openFiles filenames: [String]) {
+        didReceiveOpenFiles = true
+        for path in filenames {
+            createNewWindow(scriptPath: path)
+        }
+        sender.reply(toOpenOrPrint: .success)
     }
     
     func setupMenu() {
@@ -66,34 +82,35 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         createNewWindow()
     }
     
-    func createNewWindow() {
+    func createNewWindow(scriptPath: String? = nil) {
         let screenSize = NSScreen.main?.frame.size ?? CGSize(width: 800, height: 600)
         let windowSize = CGSize(width: 800, height: 600)
-        
+
         // Offset new windows with an ever-increasing counter so windows
         // don't overlap even after previous ones have been closed
         let offset = CGFloat(windowCount * 20)
         windowCount += 1
-        
+
         let initialX = (screenSize.width - windowSize.width) / 2
         let initialY = (screenSize.height - windowSize.height) / 2
-        
+
         let rect = NSRect(
             x: initialX + offset,
             y: initialY - offset, // Move down-right
             width: windowSize.width,
             height: windowSize.height
         )
-        
+
         let newWindow = TransparentWindow(contentRect: rect)
         newWindow.delegate = self // Track closing
-        
+
         let viewController = TerminalViewController()
+        viewController.scriptPath = scriptPath
         newWindow.contentViewController = viewController
-        
+
         // Add to our set to keep alive
         windows.insert(newWindow)
-        
+
         newWindow.makeKeyAndOrderFront(nil)
     }
     

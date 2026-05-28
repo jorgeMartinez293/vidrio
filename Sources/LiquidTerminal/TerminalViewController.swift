@@ -29,6 +29,10 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
     private var processStarted = false
     private var shellExecutable: String = "/bin/zsh"
     private var shellEnvironment: [String] = []
+    /// If set, the terminal launches `/bin/bash <scriptPath>` instead of an
+    /// interactive shell. Used when LiquidTerminal is opened with a file
+    /// (Launch Services `application(_:openFiles:)`).
+    var scriptPath: String?
 
     override func loadView() {
         self.view = NSView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
@@ -49,7 +53,21 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
         // with the correct rows/cols count.
         guard !processStarted else { return }
         processStarted = true
-        terminalView.startProcess(executable: shellExecutable, args: [], environment: shellEnvironment)
+        if let scriptPath {
+            // Run the supplied script directly. The script itself is expected
+            // to keep the window open (e.g. with a trailing `read`).
+            terminalView.startProcess(
+                executable: "/bin/bash",
+                args: [scriptPath],
+                environment: shellEnvironment
+            )
+        } else {
+            terminalView.startProcess(
+                executable: shellExecutable,
+                args: [],
+                environment: shellEnvironment
+            )
+        }
     }
 
     override func viewDidAppear() {
@@ -161,56 +179,6 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
 
         shellEnvironment = Array(env.map { "\($0.key)=\($0.value)" })
 
-        // Debug: Inject Kitty Image
-        // DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
-        //     self?.injectTestImage()
-        // }
-    }
-
-    func injectTestImage() {
-        print("DEBUG: Injecting test image...")
-        let imagePath = "/tmp/test.png" // Valid test image
-        var pngData: Data?
-
-        if FileManager.default.fileExists(atPath: imagePath) {
-            pngData = try? Data(contentsOf: URL(fileURLWithPath: imagePath))
-            print("DEBUG: Loaded samurot.png, size: \(pngData?.count ?? 0)")
-        } else {
-            print("DEBUG: samurot.png not found at \(imagePath), using fallback red pixel")
-            // 1x1 red pixel
-            let redPixelBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII="
-            pngData = Data(base64Encoded: redPixelBase64)
-        }
-
-        guard let data = pngData else { return }
-        let base64Str = data.base64EncodedString()
-
-        // Construct Kitty graphics escape sequence
-        // a=T (transmit and display), f=100 (PNG), t=d (direct)
-        let chunk_size = 4096
-        let chunks = stride(from: 0, to: base64Str.count, by: chunk_size).map {
-            let start = base64Str.index(base64Str.startIndex, offsetBy: $0)
-            let end = base64Str.index(start, offsetBy: min(chunk_size, base64Str.count - $0))
-            return String(base64Str[start..<end])
-        }
-
-        print("DEBUG: Sending \(chunks.count) chunks")
-
-        // Clear ID 1
-        terminalView.feed(text: "\u{1B}_Ga=d,d=i,i=1\u{1B}\\")
-
-        for (i, chunk) in chunks.enumerated() {
-            let m = (i < chunks.count - 1) ? 1 : 0
-            var payload = ""
-            if i == 0 {
-                payload = "a=T,f=100,t=d,i=1,m=\(m);\(chunk)"
-            } else {
-                payload = "m=\(m);\(chunk)"
-            }
-            terminalView.feed(text: "\u{1B}_G\(payload)\u{1B}\\")
-        }
-        print("DEBUG: Injection complete")
-        terminalView.feed(text: "\u{1B}[H\u{1B}[J\r\nImage injected.\r\n") // Clear screen and show message
     }
 
     // MARK: - LocalProcessTerminalViewDelegate
