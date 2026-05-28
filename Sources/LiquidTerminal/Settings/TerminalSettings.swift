@@ -58,19 +58,23 @@ struct TerminalSettings: Codable, Equatable {
         self.cornerRadius = cornerRadius
     }
 
+    /// Decodes missing fields to their default value (via `decodeIfPresent`) so
+    /// that adding a new setting in a future version doesn't reset every
+    /// existing user's stored settings on upgrade. Clamps after decoding.
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.cols = try c.decode(Int.self, forKey: .cols)
-        self.rows = try c.decode(Int.self, forKey: .rows)
-        self.blurMaterial = try c.decode(BlurMaterial.self, forKey: .blurMaterial)
-        self.backgroundColorEnabled = try c.decode(Bool.self, forKey: .backgroundColorEnabled)
-        self.backgroundColor = try c.decode(RGBAColor.self, forKey: .backgroundColor)
-        self.opacity = try c.decode(Double.self, forKey: .opacity)
-        self.fontName = try c.decode(String.self, forKey: .fontName)
-        self.fontSize = try c.decode(Double.self, forKey: .fontSize)
-        self.textColor = try c.decode(RGBAColor.self, forKey: .textColor)
-        self.cursorColor = try c.decode(RGBAColor.self, forKey: .cursorColor)
-        self.cornerRadius = try c.decode(Double.self, forKey: .cornerRadius)
+        let d = Self.defaults
+        self.cols = try c.decodeIfPresent(Int.self, forKey: .cols) ?? d.cols
+        self.rows = try c.decodeIfPresent(Int.self, forKey: .rows) ?? d.rows
+        self.blurMaterial = try c.decodeIfPresent(BlurMaterial.self, forKey: .blurMaterial) ?? d.blurMaterial
+        self.backgroundColorEnabled = try c.decodeIfPresent(Bool.self, forKey: .backgroundColorEnabled) ?? d.backgroundColorEnabled
+        self.backgroundColor = try c.decodeIfPresent(RGBAColor.self, forKey: .backgroundColor) ?? d.backgroundColor
+        self.opacity = try c.decodeIfPresent(Double.self, forKey: .opacity) ?? d.opacity
+        self.fontName = try c.decodeIfPresent(String.self, forKey: .fontName) ?? d.fontName
+        self.fontSize = try c.decodeIfPresent(Double.self, forKey: .fontSize) ?? d.fontSize
+        self.textColor = try c.decodeIfPresent(RGBAColor.self, forKey: .textColor) ?? d.textColor
+        self.cursorColor = try c.decodeIfPresent(RGBAColor.self, forKey: .cursorColor) ?? d.cursorColor
+        self.cornerRadius = try c.decodeIfPresent(Double.self, forKey: .cornerRadius) ?? d.cornerRadius
         self = self.clamped()
     }
 

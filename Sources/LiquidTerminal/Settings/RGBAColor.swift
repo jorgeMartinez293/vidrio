@@ -15,8 +15,11 @@ struct RGBAColor: Codable, Equatable {
     }
 
     /// Reads sRGB components from an NSColor (converting color space if needed).
+    /// Falls back to opaque black if the color can't be expressed in sRGB
+    /// (e.g. pattern or catalog colors), since reading components off a
+    /// non-RGB NSColor traps at runtime.
     init(_ color: NSColor) {
-        let c = color.usingColorSpace(.sRGB) ?? color
+        let c = color.usingColorSpace(.sRGB) ?? NSColor(srgbRed: 0, green: 0, blue: 0, alpha: 1)
         self.red = Double(c.redComponent)
         self.green = Double(c.greenComponent)
         self.blue = Double(c.blueComponent)

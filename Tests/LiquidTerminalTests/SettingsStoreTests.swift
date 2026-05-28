@@ -34,11 +34,16 @@ struct SettingsStoreTests {
     }
 
     @Test func testResetToDefaults() {
-        let store = SettingsStore(userDefaults: makeDefaults())
+        let defaults = makeDefaults()
+        let store = SettingsStore(userDefaults: defaults)
         store.current.cols = 200
         store.save()
         store.resetToDefaults()
         #expect(store.current == TerminalSettings.defaults)
+
+        // resetToDefaults persists, so a freshly-opened store also reads defaults.
+        let reopened = SettingsStore(userDefaults: defaults)
+        #expect(reopened.current == TerminalSettings.defaults)
     }
 
     @Test func testSaveClampsBeforePersisting() {

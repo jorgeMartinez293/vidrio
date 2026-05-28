@@ -21,6 +21,17 @@ struct WindowSizeCalculatorTests {
         #expect(abs(size.height - (cell.height * 24 + WindowSizeCalculator.verticalInset)) < 0.5)
     }
 
+    @Test func testWindowSizeGrowsWithColsAndRows() {
+        let font = testFont()
+        let base = WindowSizeCalculator.windowSize(cols: 40, rows: 20, font: font)
+        let wider = WindowSizeCalculator.windowSize(cols: 80, rows: 20, font: font)
+        let taller = WindowSizeCalculator.windowSize(cols: 40, rows: 40, font: font)
+        #expect(wider.width > base.width)
+        #expect(wider.height == base.height)
+        #expect(taller.height > base.height)
+        #expect(taller.width == base.width)
+    }
+
     @Test func testDefaultSettingsProduceReasonableWindow() {
         let d = TerminalSettings.defaults
         let font = NSFont(name: d.fontName, size: d.fontSize)

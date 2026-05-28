@@ -18,6 +18,13 @@ let package = Package(
                 .product(name: "SwiftTerm", package: "SwiftTerm")
             ]
         ),
+        // NOTE: This machine has Command Line Tools only (no Xcode), so the
+        // Swift Testing framework isn't on the default search path. These
+        // unsafeFlags point the test target at the CLT-bundled Testing
+        // framework; without them `import Testing` fails to resolve
+        // ("no such module 'Testing'"). If this is ever built on a machine
+        // with Xcode (or consumed as a library dependency), these flags must
+        // be removed/adjusted.
         .testTarget(
             name: "LiquidTerminalTests",
             dependencies: ["LiquidTerminal"],
