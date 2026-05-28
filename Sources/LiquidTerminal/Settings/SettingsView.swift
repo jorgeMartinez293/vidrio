@@ -25,10 +25,10 @@ struct SettingsView: View {
                 Toggle("Color de fondo", isOn: s.backgroundColorEnabled)
                 if viewModel.settings.backgroundColorEnabled {
                     ColorPicker("Color", selection: viewModel.colorBinding(\.backgroundColor))
-                }
-                VStack(alignment: .leading) {
-                    Text("Opacidad: \(Int(viewModel.settings.opacity * 100))%")
-                    Slider(value: s.opacity, in: TerminalSettings.opacityRange)
+                    VStack(alignment: .leading) {
+                        Text("Opacidad: \(Int(viewModel.settings.opacity * 100))%")
+                        Slider(value: s.opacity, in: TerminalSettings.opacityRange)
+                    }
                 }
             }
 

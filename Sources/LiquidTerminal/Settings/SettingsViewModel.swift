@@ -21,8 +21,15 @@ final class SettingsViewModel: ObservableObject {
     init(store: SettingsStore = .shared) {
         self.store = store
         self.settings = store.current
-        let names = NSFontManager.shared.availableFontNames(with: .fixedPitchFontMask) ?? []
-        var unique = Array(Set(names)).sorted()
+        // Use font *family* names (e.g. "SF Mono", "Menlo") rather than
+        // PostScript names ("SFMono-Regular"), so the list matches the stored
+        // default and resolves cleanly via NSFont(name:size:).
+        let manager = NSFontManager.shared
+        let monoFamilies = manager.availableFontFamilies.filter { family in
+            guard let font = NSFont(name: family, size: 12) else { return false }
+            return manager.traits(of: font).contains(.fixedPitchFontMask)
+        }
+        var unique = monoFamilies.sorted()
         if !unique.contains(store.current.fontName) {
             unique.insert(store.current.fontName, at: 0)
         }
@@ -30,8 +37,10 @@ final class SettingsViewModel: ObservableObject {
     }
 
     func reset() {
-        store.resetToDefaults()
-        settings = store.current
+        // Assigning settings triggers didSet, which writes through to the store
+        // exactly once. (Avoids the double UserDefaults write of also calling
+        // store.resetToDefaults() here.)
+        settings = .defaults
     }
 
     /// SwiftUI Color binding backed by an RGBAColor keypath.
