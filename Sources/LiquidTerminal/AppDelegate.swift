@@ -10,6 +10,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     // Set to true when Launch Services hands us files at startup so we don't
     // also create an empty default window.
     private var didReceiveOpenFiles = false
+    private lazy var settingsWindowController = SettingsWindowController()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         print("Application did finish launching")
@@ -43,6 +44,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let appMenuItem = NSMenuItem()
         menu.addItem(appMenuItem)
         let appMenu = NSMenu()
+        let settingsItem = NSMenuItem(title: "Ajustes…", action: #selector(openSettings(_:)), keyEquivalent: ",")
+        appMenu.addItem(settingsItem)
+        appMenu.addItem(NSMenuItem.separator())
         let quitItem = NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appMenu.addItem(quitItem)
         appMenuItem.submenu = appMenu
@@ -80,6 +84,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     
     @objc func newWindow(_ sender: Any?) {
         createNewWindow()
+    }
+
+    @objc func openSettings(_ sender: Any?) {
+        settingsWindowController.showWindow(nil)
+        settingsWindowController.window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
     
     func createNewWindow(scriptPath: String? = nil) {
