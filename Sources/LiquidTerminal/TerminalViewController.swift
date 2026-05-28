@@ -25,6 +25,9 @@ fileprivate class LiquidTerminalView: LocalProcessTerminalView {
 class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate {
 
     fileprivate var terminalView: LiquidTerminalView!
+    /// Solid color layer between the blur and the terminal text. Empty (clear)
+    /// when `settings.backgroundColorEnabled` is false, preserving pure blur.
+    private var backgroundOverlay: NSView!
     var isClosing = false
     private var processStarted = false
     private var shellExecutable: String = "/bin/zsh"
@@ -33,6 +36,9 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
     /// interactive shell. Used when LiquidTerminal is opened with a file
     /// (Launch Services `application(_:openFiles:)`).
     var scriptPath: String?
+    /// Appearance/launch settings applied at setup. Injected by AppDelegate
+    /// before the view loads; defaults reproduce the original hardcoded look.
+    var settings: TerminalSettings = .defaults
 
     override func loadView() {
         self.view = NSView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
@@ -96,14 +102,21 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
 
 
     func setupTerminal() {
-        // Setup Visual Effect View for Blur
+        let radius = CGFloat(settings.cornerRadius)
+
+        // Setup Visual Effect View for Blur (hidden when material is "none")
         let visualEffectView = NSVisualEffectView(frame: view.bounds)
-        visualEffectView.material = .hudWindow // Darker, distinct blur
+        if let material = settings.blurMaterial.material {
+            visualEffectView.material = material
+            visualEffectView.isHidden = false
+        } else {
+            visualEffectView.isHidden = true
+        }
         visualEffectView.blendingMode = .behindWindow
         visualEffectView.state = .active
         visualEffectView.translatesAutoresizingMaskIntoConstraints = false
         visualEffectView.wantsLayer = true
-        visualEffectView.layer?.cornerRadius = 16.0
+        visualEffectView.layer?.cornerRadius = radius
         visualEffectView.layer?.masksToBounds = true
 
         view.addSubview(visualEffectView)
@@ -115,6 +128,28 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
             visualEffectView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
 
+        // Background color overlay: sits on top of the blur, under the text.
+        backgroundOverlay = NSView(frame: view.bounds)
+        backgroundOverlay.translatesAutoresizingMaskIntoConstraints = false
+        backgroundOverlay.wantsLayer = true
+        backgroundOverlay.layer?.cornerRadius = radius
+        backgroundOverlay.layer?.masksToBounds = true
+        if settings.backgroundColorEnabled {
+            backgroundOverlay.layer?.backgroundColor =
+                settings.backgroundColor.withAlpha(settings.opacity).nsColor.cgColor
+        } else {
+            backgroundOverlay.layer?.backgroundColor = NSColor.clear.cgColor
+        }
+
+        view.addSubview(backgroundOverlay)
+
+        NSLayoutConstraint.activate([
+            backgroundOverlay.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            backgroundOverlay.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            backgroundOverlay.topAnchor.constraint(equalTo: view.topAnchor),
+            backgroundOverlay.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+
         terminalView = LiquidTerminalView(frame: view.bounds)
         terminalView.translatesAutoresizingMaskIntoConstraints = false
         terminalView.processDelegate = self
@@ -123,20 +158,20 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
         // Stylization
         terminalView.wantsLayer = true
         terminalView.layer?.backgroundColor = NSColor.clear.cgColor
-        terminalView.layer?.cornerRadius = 16.0
+        terminalView.layer?.cornerRadius = radius
         terminalView.layer?.masksToBounds = true
         terminalView.nativeBackgroundColor = .clear
-        terminalView.nativeForegroundColor = .white
+        terminalView.nativeForegroundColor = settings.textColor.nsColor
 
         // Font configuration
-        if let font = NSFont(name: "SF Mono", size: 14) {
+        if let font = NSFont(name: settings.fontName, size: CGFloat(settings.fontSize)) {
             terminalView.font = font
         } else {
-             terminalView.font = NSFont.monospacedSystemFont(ofSize: 14, weight: .regular)
+            terminalView.font = NSFont.monospacedSystemFont(ofSize: CGFloat(settings.fontSize), weight: .regular)
         }
 
         // Cursor color
-        terminalView.caretColor = .white
+        terminalView.caretColor = settings.cursorColor.nsColor
 
         view.addSubview(terminalView)
 
