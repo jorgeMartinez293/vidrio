@@ -115,7 +115,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             height: windowSize.height
         )
 
-        let newWindow = TransparentWindow(contentRect: rect)
+        let newWindow = TransparentWindow(contentRect: rect, cornerRadius: CGFloat(settings.cornerRadius))
         newWindow.delegate = self // Track closing
 
         let viewController = TerminalViewController()
