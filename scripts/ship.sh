@@ -76,8 +76,10 @@ git config user.name  "$(cd "$APP_DIR" && git config user.name)"
 for BR in gh-pages main; do
   git checkout -q "$BR"
   cp "$DIST/appcast.xml" appcast.xml
-  if ! git diff --quiet; then
-    git add appcast.xml
+  # `git diff --quiet` misses a brand-new (untracked) appcast.xml — stage first
+  # and compare the index, so the very first publication also gets pushed.
+  git add appcast.xml
+  if ! git diff --cached --quiet; then
     git commit -q -m "Publish v$VERSION appcast (build $BUILD)"
     git push -q origin "$BR"
     echo "  pushed appcast → $BR"
