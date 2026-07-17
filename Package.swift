@@ -4,18 +4,22 @@
 import PackageDescription
 
 let package = Package(
-    name: "LiquidTerminal",
+    name: "Vidrio",
     platforms: [
         .macOS(.v13)
     ],
     dependencies: [
          .package(path: "Vendor/SwiftTerm"),
+         // Sparkle: in-app auto-updates. The Makefile embeds Sparkle.framework
+         // into the .app bundle (swift build alone doesn't).
+         .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.6.0"),
     ],
     targets: [
         .executableTarget(
-            name: "LiquidTerminal",
+            name: "Vidrio",
             dependencies: [
-                .product(name: "SwiftTerm", package: "SwiftTerm")
+                .product(name: "SwiftTerm", package: "SwiftTerm"),
+                .product(name: "Sparkle", package: "Sparkle"),
             ]
         ),
         // NOTE: This machine has Command Line Tools only (no Xcode), so the
@@ -26,8 +30,8 @@ let package = Package(
         // with Xcode (or consumed as a library dependency), these flags must
         // be removed/adjusted.
         .testTarget(
-            name: "LiquidTerminalTests",
-            dependencies: ["LiquidTerminal"],
+            name: "VidrioTests",
+            dependencies: ["Vidrio"],
             swiftSettings: [
                 .unsafeFlags([
                     "-F", "/Library/Developer/CommandLineTools/Library/Developer/Frameworks"

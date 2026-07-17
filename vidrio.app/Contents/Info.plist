@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Shell Script</string>
+			<key>CFBundleTypeRole</key>
+			<string>Shell</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.shell-script</string>
+				<string>public.unix-executable</string>
+				<string>public.executable</string>
+				<string>com.apple.terminal.shell-script</string>
+			</array>
+		</dict>
+	</array>
+	<key>CFBundleExecutable</key>
+	<string>Vidrio</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.vaho.vidrio</string>
+	<key>CFBundleName</key>
+	<string>vidrio</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
+	<key>CFBundleVersion</key>
+	<string>2</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>13.0</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Programs run in vidrio may use Bluetooth.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Programs run in vidrio may use the camera.</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>vidrio — familia vaho</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Programs run in vidrio may use the microphone.</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>https://jorgeMartinez293.github.io/vidrio-releases/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>Yp02/4XBYtWxLPlKoaUJamHb3FfE21Rh5a9w894TK0k=</string>
+</dict>
+</plist>

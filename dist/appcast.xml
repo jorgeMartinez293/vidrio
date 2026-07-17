@@ -1,0 +1,14 @@
+<?xml version="1.0" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>vidrio</title>
+        <item>
+            <title>1.0</title>
+            <pubDate>Sat, 18 Jul 2026 01:30:36 +0200</pubDate>
+            <sparkle:version>2</sparkle:version>
+            <sparkle:shortVersionString>1.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/jorgeMartinez293/vidrio-releases/releases/latest/download/vidrio-1.0.zip" length="2436622" type="application/octet-stream" sparkle:edSignature="JV13fcsIe2Y/zhAhqlPh/Bsizdebtk1bsAetxJ39kMaRHWsUAZ9Ei5QX+vAtSxDXzVpoWJIE3R3pnu5AK6xjAA=="/>
+        </item>
+    </channel>
+</rss>

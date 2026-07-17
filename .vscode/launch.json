@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:LiquidTerminal}",
+            "name": "Debug LiquidTerminal",
+            "target": "LiquidTerminal",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug LiquidTerminal"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:LiquidTerminal}",
+            "name": "Release LiquidTerminal",
+            "target": "LiquidTerminal",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release LiquidTerminal"
+        }
+    ]
+}

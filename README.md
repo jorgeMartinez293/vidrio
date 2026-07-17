@@ -1,4 +1,4 @@
-# LiquidTerminal
+# vidrio
 
 ---AI WAS USED IN THE MAKING OF THIS PROJECT---
 
@@ -10,8 +10,8 @@ A modern, transparent terminal emulator for macOS built with Swift and [SwiftTer
 
 ## Preview
 
-![LiquidTerminal Screenshot](doc/image2.png)
-![LiquidTerminal Screenshot 2](doc/image1.png)
+![vidrio Screenshot](doc/image2.png)
+![vidrio Screenshot 2](doc/image1.png)
 
 ## Features
 
@@ -25,11 +25,11 @@ A modern, transparent terminal emulator for macOS built with Swift and [SwiftTer
 
 ## Prerequisites
 
-Before building LiquidTerminal, make sure you have the following installed:
+Before building vidrio, make sure you have the following installed:
 
 ### 1. macOS 13 (Ventura) or later
 
-LiquidTerminal requires **macOS 13.0+**. Check your version in  → About This Mac.
+vidrio requires **macOS 13.0+**. Check your version in  → About This Mac.
 
 ### 2. Xcode Command Line Tools
 
@@ -66,8 +66,8 @@ git --version
 ### Step 1 — Clone the repository
 
 ```bash
-git clone https://github.com/jorgeMartinez293/LiquidTerminal.git
-cd LiquidTerminal
+git clone https://github.com/jorgeMartinez293/vidrio.git
+cd vidrio
 ```
 
 ### Step 2 — Build the project
@@ -94,7 +94,7 @@ make bundle
 
 This will:
 1. Build the project in release mode
-2. Create `LiquidTerminal.app` in the project directory
+2. Create `vidrio.app` in the project directory
 3. Bundle the app icon and `Info.plist`
 
 ### Step 4 — Install the App
@@ -102,15 +102,15 @@ This will:
 Move the generated app to your Applications folder:
 
 ```bash
-cp -r LiquidTerminal.app /Applications/
+cp -r vidrio.app /Applications/
 ```
 
-You can now launch **LiquidTerminal** from Spotlight (`⌘ Space`) or from `/Applications`.
+You can now launch **vidrio** from Spotlight (`⌘ Space`) or from `/Applications`.
 
 > [!NOTE]
 > Since the app is not signed with an Apple Developer certificate, macOS may block it the first time. To allow it:
 > 1. Open **System Settings → Privacy & Security**
-> 2. Scroll down and click **"Open Anyway"** next to the LiquidTerminal message
+> 2. Scroll down and click **"Open Anyway"** next to the vidrio message
 >
 > Alternatively, right-click the app → **Open** → **Open** to bypass Gatekeeper.
 
@@ -135,17 +135,17 @@ This builds in debug mode and launches the terminal immediately.
 | `make build`    | Build in debug mode                              |
 | `make run`      | Build and run immediately                        |
 | `make release`  | Build optimized release binary                   |
-| `make bundle`   | Build release + create `LiquidTerminal.app`      |
+| `make bundle`   | Build release + create `vidrio.app`      |
 | `make clean`    | Remove all build artifacts                       |
 
 ---
 
 ## Uninstall
 
-To remove LiquidTerminal:
+To remove vidrio:
 
 ```bash
-rm -rf /Applications/LiquidTerminal.app
+rm -rf /Applications/vidrio.app
 ```
 
 ---
@@ -165,12 +165,12 @@ softwareupdate --install -a
 This is a Gatekeeper issue. Clear the quarantine attribute:
 
 ```bash
-xattr -cr /Applications/LiquidTerminal.app
+xattr -cr /Applications/vidrio.app
 ```
 
 ### Window appears but terminal is blank
 
-Ensure your shell is properly configured. LiquidTerminal uses your default login shell (`$SHELL`). Check with:
+Ensure your shell is properly configured. vidrio uses your default login shell (`$SHELL`). Check with:
 
 ```bash
 echo $SHELL
