@@ -3,6 +3,17 @@
     <channel>
         <title>vidrio</title>
         <item>
+            <title>1.1</title>
+            <pubDate>Sat, 18 Jul 2026 12:46:05 +0200</pubDate>
+            <sparkle:version>3</sparkle:version>
+            <sparkle:shortVersionString>1.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/jorgeMartinez293/vidrio-releases/releases/latest/download/vidrio-1.1.zip" length="2436564" type="application/octet-stream" sparkle:edSignature="Rlp3WtVGqlOXM+G9opoEORZWrLYQislDQ1w/hHag5p0SCI4IgHFuLgT5sbN8B5UpxaurKAcfxji3/XEmPicaDg=="/>
+            <sparkle:deltas>
+                <enclosure url="https://github.com/jorgeMartinez293/vidrio-releases/releases/latest/download/vidrio3-2.delta" sparkle:deltaFrom="2" length="47594" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="tzz9ce+26Q/Z7ROM6gd2G6K1CnmcCZyIQ000QbvBd1uyH8nc1DzauIQJ+nfWVgAfCQuRmjRUeIhfCgx03lOtDw=="/>
+            </sparkle:deltas>
+        </item>
+        <item>
             <title>1.0</title>
             <pubDate>Sat, 18 Jul 2026 01:30:36 +0200</pubDate>
             <sparkle:version>2</sparkle:version>

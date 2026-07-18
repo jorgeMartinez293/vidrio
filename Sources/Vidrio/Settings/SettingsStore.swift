@@ -35,6 +35,11 @@ final class SettingsStore {
             save()
         } else {
             self.current = .defaults
+            // Persist immediately, even with untouched defaults: vaho's themes mode
+            // detects vidrio as "installed" by checking whether this file exists, so
+            // without an eager write, a vidrio that's never had a setting changed is
+            // invisible to it (and never gets captured into a theme).
+            save()
         }
     }
 
