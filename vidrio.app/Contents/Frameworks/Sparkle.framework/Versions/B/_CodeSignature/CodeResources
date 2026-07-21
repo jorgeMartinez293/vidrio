@@ -354,10 +354,10 @@
 		<dict>
 			<key>cdhash</key>
 			<data>
-			ZuOA7qmzZCboOByMm9h18FSGh/Y=
+			1iscRLHdVniGuhoM9QeMGN9Ckd0=
 			</data>
 			<key>requirement</key>
-			<string>identifier Autoupdate and anchor apple generic and certificate leaf[subject.CN] = "Apple Development: jorgediy@gmail.com (C3F43U2C35)" and certificate 1[field.1.2.840.113635.100.6.2.1] /* exists */</string>
+			<string>identifier Autoupdate and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = XZVWF6BXDQ</string>
 		</dict>
 		<key>Headers/SPUAppcastSigningValidationStatus.h</key>
 		<dict>
@@ -951,28 +951,28 @@
 		<dict>
 			<key>cdhash</key>
 			<data>
-			WFW/VUY+ZWL2kkW8I7mHjRRDL6k=
+			nBjtr7OQAsMf9A65rspWaJqvvTA=
 			</data>
 			<key>requirement</key>
-			<string>identifier "org.sparkle-project.Sparkle.Updater" and anchor apple generic and certificate leaf[subject.CN] = "Apple Development: jorgediy@gmail.com (C3F43U2C35)" and certificate 1[field.1.2.840.113635.100.6.2.1] /* exists */</string>
+			<string>identifier "org.sparkle-project.Sparkle.Updater" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = XZVWF6BXDQ</string>
 		</dict>
 		<key>XPCServices/Downloader.xpc</key>
 		<dict>
 			<key>cdhash</key>
 			<data>
-			/ETUVJ5P12gzPE75IsRgun1sILQ=
+			rQR8GQNj0kMAd8fNCkI22bMtRTA=
 			</data>
 			<key>requirement</key>
-			<string>identifier "org.sparkle-project.DownloaderService" and anchor apple generic and certificate leaf[subject.CN] = "Apple Development: jorgediy@gmail.com (C3F43U2C35)" and certificate 1[field.1.2.840.113635.100.6.2.1] /* exists */</string>
+			<string>identifier "org.sparkle-project.DownloaderService" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = XZVWF6BXDQ</string>
 		</dict>
 		<key>XPCServices/Installer.xpc</key>
 		<dict>
 			<key>cdhash</key>
 			<data>
-			GIdihHKcuxmyftmJOYZrYWDRvvo=
+			yw9ONULtXbPlygIPtOamDpeZXKg=
 			</data>
 			<key>requirement</key>
-			<string>identifier "org.sparkle-project.InstallerLauncher" and anchor apple generic and certificate leaf[subject.CN] = "Apple Development: jorgediy@gmail.com (C3F43U2C35)" and certificate 1[field.1.2.840.113635.100.6.2.1] /* exists */</string>
+			<string>identifier "org.sparkle-project.InstallerLauncher" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = XZVWF6BXDQ</string>
 		</dict>
 	</dict>
 	<key>rules</key>
