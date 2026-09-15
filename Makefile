@@ -2,8 +2,11 @@
 
 APP_NAME = vidrio
 EXECUTABLE = Vidrio
-# Universal (arm64 + x86_64) products land here instead of .build/release.
-BUILD_DIR = .build/apple/Products/Release
+RELEASE_BUILD_FLAGS = -c release --arch arm64 --arch x86_64
+# Universal (arm64 + x86_64) products don't land in .build/release, and where they do land
+# depends on the toolchain (.build/apple/Products/Release before Swift 6.4,
+# .build/out/Products/Release since), so ask SwiftPM instead of hardcoding it.
+BUILD_DIR = $(shell swift build $(RELEASE_BUILD_FLAGS) --show-bin-path 2>/dev/null)
 APP_BUNDLE = $(APP_NAME).app
 PLIST = Info.plist
 ICON = icon.icns
@@ -56,7 +59,7 @@ clean:
 	rm -rf $(APP_BUNDLE)
 
 release:
-	swift build -c release --arch arm64 --arch x86_64
+	swift build $(RELEASE_BUILD_FLAGS)
 
 bundle: release
 	rm -rf $(APP_BUNDLE)
