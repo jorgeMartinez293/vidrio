@@ -40,6 +40,11 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
     /// Appearance/launch settings applied at setup. Injected by AppDelegate
     /// before the view loads; defaults reproduce the original hardcoded look.
     var settings: TerminalSettings = .defaults
+    /// Greeter config and sprite for this shell, resolved once in `setupTerminal()` so the
+    /// prompt color and the greeting always come from the same sprite — with no fixed
+    /// selection the sprite is picked at random, and resolving twice could pick two.
+    private var greeterConfig = GreeterConfig()
+    private var greeterSprite: URL?
 
     /// Called when the shell process exits. When set (hosted as a pane in
     /// `GridViewController`), the host decides what to do with the pane
@@ -270,8 +275,10 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
         // shell (not re-evaluated per directory change, same as before). VIDRIO_PROMPT is
         // applied by ZshPromptShim as the last step of shell startup, after the user's own
         // .zshrc (and any theme/framework it loads) has already set PROMPT itself.
-        if let spriteURL = Self.resolveGreeterSprite() {
-            let color = ColorExtractor.resolvedColor(for: spriteURL, overrideHex: GreeterConfigStore.load().bulletColorHex)
+        greeterConfig = GreeterConfigStore.load()
+        greeterSprite = Self.resolveGreeterSprite(config: greeterConfig)
+        if let spriteURL = greeterSprite {
+            let color = ColorExtractor.resolvedColor(for: spriteURL, overrideHex: greeterConfig.bulletColorHex)
             let hex = String(format: "#%02X%02X%02X", color.red, color.green, color.blue)
             env["SERENO_COLOR"] = hex
             env["VIDRIO_PROMPT"] = "%F{\(hex)}●%f %F{\(hex)}%/%f %F{15}"
@@ -327,16 +334,15 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
     func refreshSerenoGreeter() {
         guard !isClosing, processStarted, scriptPath == nil,
               terminalView.terminal.isCurrentBufferAlternate == false else { return }
-        guard let spriteURL = Self.resolveGreeterSprite() else { return }
-        let config = GreeterConfigStore.load()
+        guard let spriteURL = greeterSprite else { return }
+        let config = greeterConfig
         let bytes = GreetingRenderer.render(spriteURL: spriteURL, displayMode: config.displayMode, shellExecutable: shellExecutable, fields: config.enabledFields, bulletColorHex: config.bulletColorHex)
         terminalView.feed(byteArray: bytes[...])
     }
 
     /// The sprite the greeter should show right now: the fixed selection from
     /// `~/.config/sereno/config.json`, or a random one — same default as sereno's greet.sh.
-    private static func resolveGreeterSprite() -> URL? {
-        let config = GreeterConfigStore.load()
+    private static func resolveGreeterSprite(config: GreeterConfig) -> URL? {
         if let filename = config.selectedSprite {
             let url = SpriteManager.spritesDir.appendingPathComponent(filename)
             return FileManager.default.fileExists(atPath: url.path) ? url : nil

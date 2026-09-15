@@ -37,11 +37,16 @@ struct SpriteColor: Equatable {
 }
 
 enum ColorExtractor {
+    private static let cache = SpriteFileCache<SpriteColor>()
+
+    /// Memoized per file: every new window tints its prompt from the same sprite.
     static func dominantColor(for url: URL) -> SpriteColor {
-        guard let nsImage = NSImage(contentsOf: url),
-              let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil)
-        else { return .fallback }
-        return dominantColor(for: cgImage)
+        cache.value(for: url) {
+            guard let nsImage = NSImage(contentsOf: url),
+                  let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil)
+            else { return nil }
+            return dominantColor(for: cgImage)
+        } ?? .fallback
     }
 
     /// The color to tint the info-line bullets and prompt with: a user-chosen

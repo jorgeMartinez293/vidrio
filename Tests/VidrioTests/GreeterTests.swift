@@ -63,7 +63,7 @@ struct ImagePipelineTests {
         return url
     }
 
-    @Test func testStaticPNGUpscalesByFiveWithoutChangingLogicalSize() throws {
+    @Test func testStaticPNGKeepsNativeResolution() throws {
         let url = try writePNG(r: 200, g: 100, b: 50, size: 8)
         defer { try? FileManager.default.removeItem(at: url) }
 
@@ -73,8 +73,55 @@ struct ImagePipelineTests {
 
         let source = CGImageSourceCreateWithData(rendered.data as CFData, nil)!
         let decoded = CGImageSourceCreateImageAtIndex(source, 0, nil)!
-        #expect(decoded.width == 40) // 8 * 5x upscale
-        #expect(decoded.height == 40)
+        #expect(decoded.width == 8) // SwiftTerm enlarges it with nearest-neighbor sampling
+        #expect(decoded.height == 8)
+    }
+
+    private func writeAnimatedGIF(frames: Int, size: Int = 6) throws -> URL {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("sprite-\(UUID().uuidString).gif")
+        let dest = CGImageDestinationCreateWithURL(url as CFURL, UTType.gif.identifier as CFString, frames, nil)!
+        for f in 0..<frames {
+            var pixels = [UInt8](repeating: 0, count: size * size * 4)
+            for i in stride(from: 0, to: pixels.count, by: 4) {
+                pixels[i] = UInt8(f * 60); pixels[i + 1] = 120; pixels[i + 3] = 255
+            }
+            let ctx = CGContext(
+                data: &pixels, width: size, height: size,
+                bitsPerComponent: 8, bytesPerRow: size * 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            )!
+            CGImageDestinationAddImage(dest, ctx.makeImage()!, nil)
+        }
+        #expect(CGImageDestinationFinalize(dest))
+        return url
+    }
+
+    @Test func testAnimatedGIFPassesThroughUnchanged() throws {
+        let url = try writeAnimatedGIF(frames: 3)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let rendered = try #require(ImagePipeline.render(fileAt: url, staticFrameOnly: false))
+        #expect(rendered.isAnimated)
+        #expect(rendered.nativeSize == CGSize(width: 6, height: 6))
+        #expect(rendered.data == (try Data(contentsOf: url)))
+
+        let still = try #require(ImagePipeline.render(fileAt: url, staticFrameOnly: true))
+        #expect(!still.isAnimated)
+        let source = CGImageSourceCreateWithData(still.data as CFData, nil)!
+        #expect(CGImageSourceGetCount(source) == 1)
+    }
+
+    @Test func testCacheRecomputesWhenTheFileChanges() throws {
+        let url = try writePNG(r: 200, g: 100, b: 50, size: 8)
+        defer { try? FileManager.default.removeItem(at: url) }
+        #expect(ImagePipeline.render(fileAt: url, staticFrameOnly: true)?.nativeSize == CGSize(width: 8, height: 8))
+
+        let replacement = try writePNG(r: 10, g: 200, b: 10, size: 12)
+        defer { try? FileManager.default.removeItem(at: replacement) }
+        try FileManager.default.removeItem(at: url)
+        try FileManager.default.copyItem(at: replacement, to: url)
+        #expect(ImagePipeline.render(fileAt: url, staticFrameOnly: true)?.nativeSize == CGSize(width: 12, height: 12))
     }
 }
 
