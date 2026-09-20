@@ -72,11 +72,20 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
     private var terminalTrailingConstraint: NSLayoutConstraint!
     private var terminalBottomConstraint: NSLayoutConstraint!
 
+    /// Only the bottom corners are rounded. The top edge is clipped by the
+    /// window's title bar, which is already a straight cut — rounding the
+    /// top corners here as well just carves an extra curve out of content
+    /// that sits right under that straight bar.
+    private static let bottomCorners: CACornerMask = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+
     private func updateChrome() {
         guard isViewLoaded, terminalTopConstraint != nil else { return }
         visualEffectView.layer?.cornerRadius = cornerRadius
         backgroundOverlay.layer?.cornerRadius = cornerRadius
         terminalView.layer?.cornerRadius = cornerRadius
+        visualEffectView.layer?.maskedCorners = Self.bottomCorners
+        backgroundOverlay.layer?.maskedCorners = Self.bottomCorners
+        terminalView.layer?.maskedCorners = Self.bottomCorners
         terminalTopConstraint.constant = topInset
         terminalLeadingConstraint.constant = sideInset
         terminalTrailingConstraint.constant = -sideInset
@@ -172,6 +181,7 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
         visualEffectView.translatesAutoresizingMaskIntoConstraints = false
         visualEffectView.wantsLayer = true
         visualEffectView.layer?.cornerRadius = cornerRadius
+        visualEffectView.layer?.maskedCorners = Self.bottomCorners
         visualEffectView.layer?.masksToBounds = true
 
         view.addSubview(visualEffectView)
@@ -188,6 +198,7 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
         backgroundOverlay.translatesAutoresizingMaskIntoConstraints = false
         backgroundOverlay.wantsLayer = true
         backgroundOverlay.layer?.cornerRadius = cornerRadius
+        backgroundOverlay.layer?.maskedCorners = Self.bottomCorners
         backgroundOverlay.layer?.masksToBounds = true
         if settings.backgroundColorEnabled {
             backgroundOverlay.layer?.backgroundColor =
@@ -217,6 +228,7 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
         terminalView.wantsLayer = true
         terminalView.layer?.backgroundColor = NSColor.clear.cgColor
         terminalView.layer?.cornerRadius = cornerRadius
+        terminalView.layer?.maskedCorners = Self.bottomCorners
         terminalView.layer?.masksToBounds = true
         terminalView.nativeBackgroundColor = .clear
         terminalView.nativeForegroundColor = settings.textColor.nsColor
