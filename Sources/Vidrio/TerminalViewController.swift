@@ -220,6 +220,9 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
         terminalView.translatesAutoresizingMaskIntoConstraints = false
         terminalView.processDelegate = self
         terminalView.scrollerEnabled = false
+        // Reflow once the user pauses or lets go while dragging the window
+        // edge, rather than on every intermediate frame.
+        terminalView.liveResizeCoalescingInterval = 0.1
         // Let macOS compose Option-key characters (e.g. Option+4 = "~" on a
         // Spanish keyboard) instead of sending them as ESC-prefixed Meta keys.
         terminalView.optionAsMetaKey = false

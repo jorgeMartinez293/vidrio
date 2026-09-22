@@ -21,10 +21,10 @@ class GridViewController: NSViewController, TerminalHosting {
         let controller: TerminalViewController
         /// Clipping container the pane actually tiles into (see `relayout`).
         let cell: NSView
-        /// Blur backdrop filling `cell`, behind `controller.view`. A
-        /// collapsed pane's terminal never resizes (see `relayout`), so if
-        /// its cell grows past its last real size, this is what shows in
-        /// the leftover area instead of a bare gap.
+        /// Blur backdrop filling `cell`, behind `controller.view`. While a
+        /// cell animates to a larger slot, the terminal inside is already
+        /// at its final size and this is what shows around it instead of a
+        /// bare gap.
         let cellBackdrop: NSVisualEffectView
         var isClosing = false
     }
@@ -77,15 +77,11 @@ class GridViewController: NSViewController, TerminalHosting {
             self.closePane(controller)
         }
 
-        // Each pane tiles as `cell`, whose frame always exactly matches its
-        // grid slot. `controller.view` sits inside it but, unlike `cell`,
-        // is only ever resized while this pane is focused (see `relayout`)
-        // — a collapsed pane's terminal geometry is left completely alone,
-        // so its already-drawn output (notably a startup greeter with a
-        // Kitty-protocol image, which doesn't survive a reflow intact)
-        // never gets touched. `cellBackdrop` covers whatever part of a
-        // collapsed, since-grown cell that leaves uncovered instead of a
-        // bare gap.
+        // Each pane tiles as `cell`, which animates into its grid slot.
+        // `controller.view` sits inside it and is sized straight to the
+        // slot's final size (see `relayout`), so the terminal's grid always
+        // matches the space it is shown in. `cellBackdrop` fills whatever
+        // part of the cell the terminal doesn't cover mid-animation.
         let cell = NSView()
         cell.wantsLayer = true
         cell.layer?.masksToBounds = true
@@ -208,7 +204,13 @@ class GridViewController: NSViewController, TerminalHosting {
         )
         let applyFrames = {
             for (idx, pane) in self.panes.enumerated() {
-                let target = layout.frames[idx]
+                // Weighted slots land on fractional points; snapping them to
+                // whole device pixels keeps every terminal row (and each row
+                // stripe of an inline image) on exact pixel boundaries,
+                // instead of blurred or seamed.
+                let target = self.view.backingAlignedRect(
+                    layout.frames[idx], options: .alignAllEdgesNearest
+                )
                 if animated {
                     pane.cell.animator().frame = target
                     pane.cellBackdrop.animator().frame = NSRect(origin: .zero, size: target.size)
@@ -216,17 +218,16 @@ class GridViewController: NSViewController, TerminalHosting {
                     pane.cell.frame = target
                     pane.cellBackdrop.frame = NSRect(origin: .zero, size: target.size)
                 }
-                // Only the focused pane's terminal actually resizes (and so
-                // reflows) — a collapsed pane keeps whatever geometry it had
-                // the last time it was focused; `cellBackdrop`, not a resize,
-                // is what covers its cell if that leaves it short.
-                if idx == self.focusedIndex {
-                    let focusedTarget = NSRect(origin: .zero, size: target.size)
-                    if animated {
-                        pane.controller.view.animator().frame = focusedTarget
-                    } else {
-                        pane.controller.view.frame = focusedTarget
-                    }
+                // Every pane's terminal takes its slot's final size in a
+                // single step, never animated: animating it would resize
+                // the terminal through every intermediate frame, reflowing
+                // its text and sending the program inside a burst of
+                // SIGWINCHes it redraws for sizes that are already stale,
+                // leaving mangled lines behind. The cell's clip hides the
+                // difference while the cell itself animates.
+                let terminalFrame = NSRect(origin: .zero, size: target.size)
+                if pane.controller.view.frame != terminalFrame {
+                    pane.controller.view.frame = terminalFrame
                 }
             }
         }
@@ -261,10 +262,10 @@ class GridViewController: NSViewController, TerminalHosting {
             pane.controller.bottomInset = single ? 10 : 8
             pane.controller.forwardsTitleToWindow = idx == focusedIndex
 
-            // `cell` itself clips a collapsed pane's oversized, stale-framed
-            // `controller.view` (see `relayout`) — without its own radius
-            // here, that clip lands on a bare rectangular edge instead of
-            // matching cellBackdrop's rounded corner.
+            // `cell` itself clips `controller.view` while the cell animates
+            // (see `relayout`) — without its own radius here, that clip
+            // lands on a bare rectangular edge instead of matching
+            // cellBackdrop's rounded corner.
             pane.cell.layer?.cornerRadius = radius
 
             pane.cellBackdrop.wantsLayer = true
