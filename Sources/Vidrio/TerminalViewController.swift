@@ -10,13 +10,47 @@ import SwiftTerm
 /// exiting vim), `bufferActivated()` snaps the view to the correct scroll
 /// position. Without this a stale `yDisp` can leave the view showing the wrong
 /// portion of the buffer.
+///
+/// It also restricts trackpad scrolling to two fingers: it tracks the fingers
+/// on the trackpad and drops scroll events made with three or more.
 fileprivate class VidrioTerminalView: LocalProcessTerminalView {
+
+    private var scrollFilter = TwoFingerScrollFilter()
 
     override func bufferActivated(source: Terminal) {
         super.bufferActivated(source: source)
         // Ensure the view is scrolled to the bottom of the new buffer after
         // any buffer switch so current content is always visible.
         scroll(toPosition: 1.0)
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        guard scrollFilter.shouldDeliver(phase: event.phase, momentumPhase: event.momentumPhase) else { return }
+        super.scrollWheel(with: event)
+    }
+
+    override func touchesBegan(with event: NSEvent) {
+        updateTouchCount(with: event)
+        super.touchesBegan(with: event)
+    }
+
+    override func touchesMoved(with event: NSEvent) {
+        updateTouchCount(with: event)
+        super.touchesMoved(with: event)
+    }
+
+    override func touchesEnded(with event: NSEvent) {
+        updateTouchCount(with: event)
+        super.touchesEnded(with: event)
+    }
+
+    override func touchesCancelled(with event: NSEvent) {
+        updateTouchCount(with: event)
+        super.touchesCancelled(with: event)
+    }
+
+    private func updateTouchCount(with event: NSEvent) {
+        scrollFilter.touchesChanged(count: event.touches(matching: .touching, in: self).count)
     }
 }
 
@@ -220,6 +254,8 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
         terminalView.translatesAutoresizingMaskIntoConstraints = false
         terminalView.processDelegate = self
         terminalView.scrollerEnabled = false
+        // Trackpad touches are needed to count the fingers behind a scroll.
+        terminalView.allowedTouchTypes.insert(.indirect)
         // Reflow once the user pauses or lets go while dragging the window
         // edge, rather than on every intermediate frame.
         terminalView.liveResizeCoalescingInterval = 0.1
