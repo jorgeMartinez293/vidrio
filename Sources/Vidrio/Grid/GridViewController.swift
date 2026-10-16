@@ -12,9 +12,9 @@ protocol TerminalHosting: AnyObject {
 extension TerminalViewController: TerminalHosting {}
 
 /// Hosts any number of `TerminalViewController` panes tiled to fill the
-/// window, like a tiling window manager: an auto grid sized to the pane
-/// count, with the focused pane's row and column enlarged. `⌘⇧N` adds a
-/// pane, `⌘`+arrow moves focus between panes, and `⌘W` closes the focused
+/// window, like a tiling window manager: panes are arranged in columns
+/// sized to the pane count, new panes open without moving existing ones, and
+/// the focused pane's column and cell are enlarged. `⌘⇧N` adds a pane, `⌘`+arrow moves focus between panes, and `⌘W` closes the focused
 /// pane (or the window itself once only one pane is left).
 class GridViewController: NSViewController, TerminalHosting {
     private struct Pane {
@@ -30,6 +30,10 @@ class GridViewController: NSViewController, TerminalHosting {
     }
 
     private var panes: [Pane] = []
+    /// Indices into `panes`, per column (leftmost first, each top to
+    /// bottom). Kept as state rather than derived from the pane count so a
+    /// pane stays where it opened as others come and go.
+    private var columns: [[Int]] = []
     private var focusedIndex = 0
     private var hasAddedInitialPane = false
     /// Applied to every pane as it's created, and live-reloaded onto all
@@ -92,6 +96,7 @@ class GridViewController: NSViewController, TerminalHosting {
         cell.addSubview(cellBackdrop)
 
         panes.append(Pane(controller: controller, cell: cell, cellBackdrop: cellBackdrop))
+        columns = GridLayout.appending(panes.count - 1, to: columns)
         focusedIndex = panes.count - 1
         applyChrome()
 
@@ -128,6 +133,7 @@ class GridViewController: NSViewController, TerminalHosting {
         let closedCell = panes[idx].cell
         closedCell.isHidden = true
         panes.remove(at: idx)
+        columns = GridLayout.removing(idx, from: columns)
         focusedIndex = min(focusedIndex, panes.count - 1)
         applyChrome()
         relayout(animated: true)
@@ -170,7 +176,7 @@ class GridViewController: NSViewController, TerminalHosting {
     private func moveFocus(_ direction: GridLayout.Direction) {
         guard panes.count > 1 else { return }
         let layout = GridLayout.compute(
-            count: panes.count, focusedIndex: focusedIndex, bounds: view.bounds,
+            columns: columns, focusedIndex: focusedIndex, bounds: view.bounds,
             spacing: spacing, focusWeight: focusWeight
         )
         let newIndex = GridLayout.move(from: focusedIndex, direction: direction, layout: layout)
@@ -199,7 +205,7 @@ class GridViewController: NSViewController, TerminalHosting {
         // single-window look, instead of sitting inset with a visible gap
         // that throws off how its 28pt corner radius reads.
         let layout = GridLayout.compute(
-            count: panes.count, focusedIndex: focusedIndex, bounds: view.bounds,
+            columns: columns, focusedIndex: focusedIndex, bounds: view.bounds,
             spacing: panes.count > 1 ? spacing : 0, focusWeight: focusWeight
         )
         let applyFrames = {

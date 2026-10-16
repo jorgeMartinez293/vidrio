@@ -43,6 +43,25 @@ final class SettingsViewModel: ObservableObject {
         settings = .defaults
     }
 
+    /// Whether the optional secondary-text override is active. Enabling seeds a dark,
+    /// readable default so the change is visible immediately.
+    var secondaryTextEnabled: Binding<Bool> {
+        Binding(
+            get: { self.settings.secondaryTextColor != nil },
+            set: {
+                self.settings.secondaryTextColor = $0
+                    ? RGBAColor(red: 0.2, green: 0.2, blue: 0.14, alpha: 1) : nil
+            }
+        )
+    }
+
+    var secondaryTextBinding: Binding<Color> {
+        Binding(
+            get: { Color(nsColor: (self.settings.secondaryTextColor ?? .white).nsColor) },
+            set: { self.settings.secondaryTextColor = RGBAColor(NSColor($0)) }
+        )
+    }
+
     /// SwiftUI Color binding backed by an RGBAColor keypath.
     func colorBinding(_ keyPath: WritableKeyPath<TerminalSettings, RGBAColor>) -> Binding<Color> {
         Binding(

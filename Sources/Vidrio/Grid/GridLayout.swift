@@ -1,20 +1,23 @@
 import CoreGraphics
 
-/// Pure geometry for tiling N panes into an auto-sized grid, like a tiling
-/// window manager: as square a grid as the pane count allows, with the
-/// focused pane's entire row and column enlarged so it reads as "the big
-/// one" without breaking the 2D layout that arrow-key navigation relies on.
+/// Pure geometry for tiling N panes into columns, like a tiling window
+/// manager: each column splits its own height evenly between the panes it
+/// holds, so a column with fewer panes keeps them taller instead of an odd
+/// pane out stretching across the whole width. New panes are placed so that
+/// existing panes never move (see `appending`), and the focused pane's
+/// column is widened and the pane itself made taller within that column so
+/// it reads as "the big one".
 enum GridLayout {
     struct Result {
         /// Pane frames, indexed the same as the input pane list, in
         /// `bounds`'s coordinate space (AppKit: origin bottom-left).
         let frames: [CGRect]
-        /// Pane index -> row (0 = top row).
+        /// Pane index -> column (0 = leftmost column).
+        let columnOf: [Int]
+        /// Pane index -> position within its column (0 = top).
         let rowOf: [Int]
-        /// Pane index -> column within its row.
-        let colOf: [Int]
-        /// [row][col] -> pane index, top row first, row-major. A ragged
-        /// last row simply has fewer entries.
+        /// [column][row] -> pane index, leftmost column first, each column
+        /// top to bottom. Columns may hold different numbers of panes.
         let indexAt: [[Int]]
     }
 
@@ -22,100 +25,146 @@ enum GridLayout {
         case up, down, left, right
     }
 
+    // MARK: - Placement
+
+    /// The column a newly added pane goes into, given how many panes each
+    /// existing column holds. Returns `columnCounts.count` when the pane
+    /// should open a new column on the right.
+    ///
+    /// The grid keeps `ceil(sqrt(n))` columns, as square as the pane count
+    /// allows: a new column opens only once there are fewer than that;
+    /// otherwise the pane goes under the column with the fewest panes
+    /// (leftmost on a tie). Either way nothing already placed moves.
+    static func columnForNewPane(columnCounts: [Int]) -> Int {
+        let newCount = columnCounts.reduce(0, +) + 1
+        let targetColumns = Int(ceil(sqrt(Double(newCount))))
+        guard columnCounts.count >= targetColumns,
+              let fewest = columnCounts.min(),
+              let column = columnCounts.firstIndex(of: fewest) else {
+            return columnCounts.count
+        }
+        return column
+    }
+
+    /// `columns` with pane `index` placed per `columnForNewPane`, at the
+    /// bottom of its column.
+    static func appending(_ index: Int, to columns: [[Int]]) -> [[Int]] {
+        var columns = columns
+        let column = columnForNewPane(columnCounts: columns.map(\.count))
+        if column == columns.count {
+            columns.append([index])
+        } else {
+            columns[column].append(index)
+        }
+        return columns
+    }
+
+    /// `columns` with pane `index` taken out — the panes around it keep
+    /// their places, an emptied column disappears — and every higher pane
+    /// index shifted down by one to match the pane list it was removed from.
+    static func removing(_ index: Int, from columns: [[Int]]) -> [[Int]] {
+        columns
+            .map { column in
+                column.filter { $0 != index }.map { $0 > index ? $0 - 1 : $0 }
+            }
+            .filter { !$0.isEmpty }
+    }
+
+    /// The columns panes `0..<count` end up in when added one at a time.
+    static func columns(forCount count: Int) -> [[Int]] {
+        (0..<max(count, 0)).reduce(into: [[Int]]()) { columns, index in
+            columns = appending(index, to: columns)
+        }
+    }
+
+    // MARK: - Geometry
+
     /// - Parameters:
-    ///   - focusWeight: how many times wider/taller the focused pane's
-    ///     column/row is versus a normal one.
+    ///   - columns: pane indices per column, leftmost first, each top to
+    ///     bottom; together they must cover `0..<paneCount` exactly once.
+    ///   - focusWeight: how many times wider the focused pane's column is
+    ///     versus a normal one, and how many times taller the focused pane
+    ///     is versus the other panes in its column.
     static func compute(
-        count: Int,
+        columns: [[Int]],
         focusedIndex: Int,
         bounds: CGRect,
         spacing: CGFloat = 8,
         focusWeight: CGFloat = 1.7
     ) -> Result {
+        let columns = columns.filter { !$0.isEmpty }
+        let count = columns.reduce(0) { $0 + $1.count }
         guard count > 0 else {
-            return Result(frames: [], rowOf: [], colOf: [], indexAt: [])
+            return Result(frames: [], columnOf: [], rowOf: [], indexAt: [])
         }
         let focusedIndex = max(0, min(focusedIndex, count - 1))
 
-        let cols = Int(ceil(sqrt(Double(count))))
-        let rows = Int(ceil(Double(count) / Double(cols)))
-
+        var columnOf = [Int](repeating: 0, count: count)
         var rowOf = [Int](repeating: 0, count: count)
-        var colOf = [Int](repeating: 0, count: count)
-        var indexAt: [[Int]] = []
-        for r in 0..<rows {
-            let start = r * cols
-            let end = min(start + cols, count)
-            guard start < end else { break }
-            var rowIndices: [Int] = []
-            for (c, idx) in (start..<end).enumerated() {
+        for (c, column) in columns.enumerated() {
+            for (r, idx) in column.enumerated() {
+                columnOf[idx] = c
                 rowOf[idx] = r
-                colOf[idx] = c
-                rowIndices.append(idx)
             }
-            indexAt.append(rowIndices)
         }
+        let focusedColumn = columnOf[focusedIndex]
 
-        let focusedRow = rowOf[focusedIndex]
-        let focusedCol = colOf[focusedIndex]
+        var columnWeights = [CGFloat](repeating: 1, count: columns.count)
+        columnWeights[focusedColumn] = focusWeight
+        let totalColumnWeight = columnWeights.reduce(0, +)
+        let availableWidth = max(bounds.width - spacing * CGFloat(columns.count + 1), 0)
 
-        // Row heights come from global weights across every row.
-        var rowWeights = [CGFloat](repeating: 1, count: indexAt.count)
-        rowWeights[focusedRow] = focusWeight
-        let totalRowWeight = rowWeights.reduce(0, +)
-        let availableHeight = max(bounds.height - spacing * CGFloat(indexAt.count + 1), 0)
-        let rowHeights = rowWeights.map { $0 / totalRowWeight * availableHeight }
-
-        // Column widths are computed per row so a ragged last row still
-        // fills the full width; the focused column only widens rows where
-        // it's actually present.
+        // Each column divides the full height between its own panes, so
+        // columns of different lengths still all reach top and bottom.
         var frames = [CGRect](repeating: .zero, count: count)
-        var y = bounds.maxY - spacing
-        for (r, rowIndices) in indexAt.enumerated() {
-            let rowHeight = rowHeights[r]
-            let presentCols = rowIndices.count
-            var colWeights = [CGFloat](repeating: 1, count: presentCols)
-            if focusedCol < presentCols {
-                colWeights[focusedCol] = focusWeight
+        var x = bounds.minX + spacing
+        for (c, column) in columns.enumerated() {
+            let width = columnWeights[c] / totalColumnWeight * availableWidth
+            var rowWeights = [CGFloat](repeating: 1, count: column.count)
+            if c == focusedColumn {
+                rowWeights[rowOf[focusedIndex]] = focusWeight
             }
-            let totalColWeight = colWeights.reduce(0, +)
-            let availableWidth = max(bounds.width - spacing * CGFloat(presentCols + 1), 0)
+            let totalRowWeight = rowWeights.reduce(0, +)
+            let availableHeight = max(bounds.height - spacing * CGFloat(column.count + 1), 0)
 
-            let cellY = y - rowHeight
-            var x = bounds.minX + spacing
-            for (c, idx) in rowIndices.enumerated() {
-                let width = colWeights[c] / totalColWeight * availableWidth
-                frames[idx] = CGRect(x: x, y: cellY, width: width, height: rowHeight)
-                x += width + spacing
+            var y = bounds.maxY - spacing
+            for (r, idx) in column.enumerated() {
+                let height = rowWeights[r] / totalRowWeight * availableHeight
+                frames[idx] = CGRect(x: x, y: y - height, width: width, height: height)
+                y -= height + spacing
             }
-            y = cellY - spacing
+            x += width + spacing
         }
 
-        return Result(frames: frames, rowOf: rowOf, colOf: colOf, indexAt: indexAt)
+        return Result(frames: frames, columnOf: columnOf, rowOf: rowOf, indexAt: columns)
     }
 
     /// The pane index that should gain focus moving `direction` from
     /// `index`, or `index` unchanged if there's nowhere to go that way.
+    /// Up/down stay within the column; left/right land on the pane in the
+    /// neighboring column whose vertical center is closest (upper one on a
+    /// tie), since columns' rows don't line up.
     static func move(from index: Int, direction: Direction, layout: Result) -> Int {
-        guard layout.rowOf.indices.contains(index) else { return index }
+        guard layout.columnOf.indices.contains(index) else { return index }
+        let column = layout.columnOf[index]
         let row = layout.rowOf[index]
-        let col = layout.colOf[index]
 
         switch direction {
-        case .left:
-            guard col > 0 else { return index }
-            return layout.indexAt[row][col - 1]
-        case .right:
-            guard col + 1 < layout.indexAt[row].count else { return index }
-            return layout.indexAt[row][col + 1]
         case .up:
             guard row > 0 else { return index }
-            let targetRow = layout.indexAt[row - 1]
-            return targetRow[min(col, targetRow.count - 1)]
+            return layout.indexAt[column][row - 1]
         case .down:
-            guard row + 1 < layout.indexAt.count else { return index }
-            let targetRow = layout.indexAt[row + 1]
-            return targetRow[min(col, targetRow.count - 1)]
+            guard row + 1 < layout.indexAt[column].count else { return index }
+            return layout.indexAt[column][row + 1]
+        case .left, .right:
+            let target = column + (direction == .left ? -1 : 1)
+            guard layout.indexAt.indices.contains(target) else { return index }
+            let midY = layout.frames[index].midY
+            // `indexAt` lists each column top first, so `min(by:)` keeps the
+            // upper pane when two are equally close.
+            return layout.indexAt[target].min { a, b in
+                abs(layout.frames[a].midY - midY) < abs(layout.frames[b].midY - midY)
+            } ?? index
         }
     }
 }

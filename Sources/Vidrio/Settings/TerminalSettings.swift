@@ -13,12 +13,18 @@ struct TerminalSettings: Codable, Equatable {
     var fontSize: Double
     var textColor: RGBAColor
     var cursorColor: RGBAColor
+    /// Brightness multiplier for dim/faint text (SGR 2), e.g. the version/model line of CLI tools.
+    var dimFactor: Double
+    /// Replaces the fixed grays (153 and 136) that Claude Code uses for its version/model/effort
+    /// line, path and borders. `nil` keeps them as sent.
+    var secondaryTextColor: RGBAColor?
 
     // Valid ranges.
     static let colsRange = 20...400
     static let rowsRange = 5...200
     static let opacityRange = 0.0...1.0
     static let fontSizeRange = 8.0...48.0
+    static let dimFactorRange = 0.0...1.0
 
     /// Defaults reproduce the app's current hardcoded behavior.
     /// cols/rows ≈ the old 800×600 window with SF Mono 14 (see WindowSizeCalculator
@@ -33,14 +39,18 @@ struct TerminalSettings: Codable, Equatable {
         fontName: "SF Mono",
         fontSize: 14,
         textColor: .white,
-        cursorColor: .white
+        cursorColor: .white,
+        dimFactor: 0.5,
+        secondaryTextColor: nil
     )
 
     init(
         cols: Int, rows: Int, blurMaterial: BlurMaterial,
         backgroundColorEnabled: Bool, backgroundColor: RGBAColor, opacity: Double,
         fontName: String, fontSize: Double,
-        textColor: RGBAColor, cursorColor: RGBAColor
+        textColor: RGBAColor, cursorColor: RGBAColor,
+        dimFactor: Double = TerminalSettings.defaults.dimFactor,
+        secondaryTextColor: RGBAColor? = nil
     ) {
         self.cols = cols
         self.rows = rows
@@ -52,6 +62,8 @@ struct TerminalSettings: Codable, Equatable {
         self.fontSize = fontSize
         self.textColor = textColor
         self.cursorColor = cursorColor
+        self.dimFactor = dimFactor
+        self.secondaryTextColor = secondaryTextColor
     }
 
     /// Decodes missing fields to their default value (via `decodeIfPresent`) so
@@ -70,6 +82,8 @@ struct TerminalSettings: Codable, Equatable {
         self.fontSize = try c.decodeIfPresent(Double.self, forKey: .fontSize) ?? d.fontSize
         self.textColor = try c.decodeIfPresent(RGBAColor.self, forKey: .textColor) ?? d.textColor
         self.cursorColor = try c.decodeIfPresent(RGBAColor.self, forKey: .cursorColor) ?? d.cursorColor
+        self.dimFactor = try c.decodeIfPresent(Double.self, forKey: .dimFactor) ?? d.dimFactor
+        self.secondaryTextColor = try c.decodeIfPresent(RGBAColor.self, forKey: .secondaryTextColor)
         self = self.clamped()
     }
 
@@ -80,6 +94,7 @@ struct TerminalSettings: Codable, Equatable {
         s.rows = min(max(rows, Self.rowsRange.lowerBound), Self.rowsRange.upperBound)
         s.opacity = min(max(opacity, Self.opacityRange.lowerBound), Self.opacityRange.upperBound)
         s.fontSize = min(max(fontSize, Self.fontSizeRange.lowerBound), Self.fontSizeRange.upperBound)
+        s.dimFactor = min(max(dimFactor, Self.dimFactorRange.lowerBound), Self.dimFactorRange.upperBound)
         return s
     }
 }

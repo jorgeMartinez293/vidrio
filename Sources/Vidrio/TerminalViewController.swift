@@ -281,6 +281,8 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
 
         // Cursor color
         terminalView.caretColor = settings.cursorColor.nsColor
+        terminalView.dimFactor = CGFloat(settings.dimFactor)
+        terminalView.trueColorOverrides = Self.grayOverrides(for: settings.secondaryTextColor)
 
         view.addSubview(terminalView)
 
@@ -296,6 +298,9 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
         shellExecutable = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
         var env = ProcessInfo.processInfo.environment
         env["TERM"] = "xterm-256color"
+        // SwiftTerm renders 24-bit color. Without this, apps such as Claude Code detect only
+        // 256 colors and downgrade their fixed RGB grays to palette entries.
+        env["COLORTERM"] = "truecolor"
         // Ensure /usr/local/bin and /opt/homebrew/bin are in PATH
         if let path = env["PATH"] {
             env["PATH"] = "\(path):/usr/local/bin:/opt/homebrew/bin"
@@ -347,6 +352,13 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
     /// color/opacity, font, colors) — used when vaho pushes a theme change while this
     /// window is already up. Geometry (cols/rows) is intentionally left out: like the
     /// rest of vidrio's settings, that only takes effect for the next window opened.
+    /// Claude Code hardcodes its secondary text as truecolor grays 0x999999 (version, model,
+    /// effort, path, hints) and 0x888888 (borders), which can vanish into light backgrounds.
+    private static func grayOverrides(for color: RGBAColor?) -> [UInt32: NSColor] {
+        guard let color else { return [:] }
+        return [0x999999: color.nsColor, 0x888888: color.nsColor]
+    }
+
     func applySettings(_ newSettings: TerminalSettings) {
         settings = newSettings
 
@@ -371,6 +383,8 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
             terminalView.font = NSFont.monospacedSystemFont(ofSize: CGFloat(settings.fontSize), weight: .regular)
         }
         terminalView.caretColor = settings.cursorColor.nsColor
+        terminalView.dimFactor = CGFloat(settings.dimFactor)
+        terminalView.trueColorOverrides = Self.grayOverrides(for: settings.secondaryTextColor)
     }
 
     /// Renders and feeds the sprite+sysinfo greeting straight into this window's buffer via

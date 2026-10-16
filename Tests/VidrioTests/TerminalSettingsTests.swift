@@ -96,6 +96,19 @@ struct TerminalSettingsTests {
         #expect(decoded.rows == 5)
         #expect(abs(decoded.opacity - 1.0) < 0.001)
         #expect(abs(decoded.fontSize - 48) < 0.001)
+        // Fields added later fall back to their defaults when absent.
+        #expect(abs(decoded.dimFactor - 0.5) < 0.001)
+        #expect(decoded.secondaryTextColor == nil)
+    }
+
+    @Test func testSecondaryTextColorRoundTripAndDimClamp() throws {
+        var s = TerminalSettings.defaults
+        s.secondaryTextColor = RGBAColor(red: 0.2, green: 0.2, blue: 0.1, alpha: 1)
+        s.dimFactor = 7
+        let data = try JSONEncoder().encode(s)
+        let decoded = try JSONDecoder().decode(TerminalSettings.self, from: data)
+        #expect(decoded.secondaryTextColor == s.secondaryTextColor)
+        #expect(abs(decoded.dimFactor - 1) < 0.001)
     }
 
     @Test func testClampedMethodEnforcesBounds() {

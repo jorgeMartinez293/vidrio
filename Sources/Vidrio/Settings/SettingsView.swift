@@ -43,6 +43,14 @@ struct SettingsView: View {
                 }
                 ColorPicker("Color del texto", selection: viewModel.colorBinding(\.textColor))
                 ColorPicker("Color del cursor", selection: viewModel.colorBinding(\.cursorColor))
+                Toggle("Reemplazar gris de Claude Code", isOn: viewModel.secondaryTextEnabled)
+                if viewModel.settings.secondaryTextColor != nil {
+                    ColorPicker("Color del texto secundario", selection: viewModel.secondaryTextBinding)
+                }
+                VStack(alignment: .leading) {
+                    Text("Brillo del texto atenuado: \(Int(viewModel.settings.dimFactor * 100))%")
+                    Slider(value: s.dimFactor, in: TerminalSettings.dimFactorRange)
+                }
             }
 
             Section {
@@ -52,6 +60,6 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 420, height: 560)
+        .frame(width: 420, height: 680)
     }
 }
