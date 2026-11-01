@@ -3,6 +3,21 @@
     <channel>
         <title>vidrio</title>
         <item>
+            <title>2.12</title>
+            <pubDate>Sun, 01 Nov 2026 13:26:27 +0100</pubDate>
+            <sparkle:version>23</sparkle:version>
+            <sparkle:shortVersionString>2.12</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/jorgeMartinez293/vidrio-releases/releases/latest/download/vidrio-2.12.zip" length="4435692" type="application/octet-stream" sparkle:edSignature="35lU0x/KnMKe8fkT4U+vNep+NY1aoz6ZX4CAhEqLRAqVa16766x6a+X1MGkKVPP/gxAOIOUMd3aRqk+wDkLSDw=="/>
+            <sparkle:deltas>
+                <enclosure url="https://github.com/jorgeMartinez293/vidrio-releases/releases/latest/download/vidrio23-22.delta" sparkle:deltaFrom="22" length="252878" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="NigHgN1Gko7ogUtc891kA1SuwtjsdXCqmFz+m06x02hIAp2gavCHsnhuUZnwgchXzKPDHjcFFEacM2mWIpNnAw=="/>
+                <enclosure url="https://github.com/jorgeMartinez293/vidrio-releases/releases/latest/download/vidrio23-21.delta" sparkle:deltaFrom="21" length="354562" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="Wa8RX6IywQTk26qsFTI/Q4acIy9KwWESzRtdct+HHm49puptzpl659OgRU6Oqii8nKeoJm6US12wnc/6vFWMCA=="/>
+                <enclosure url="https://github.com/jorgeMartinez293/vidrio-releases/releases/latest/download/vidrio23-20.delta" sparkle:deltaFrom="20" length="373574" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="ZX3cbXzTLlRN0IARvphaWVAPAp0p/hS30COa/f1pf9okG4RYyjFzhAJoWx0GoPGoHduT/jhNkZ5Y/bfm2xZKCw=="/>
+                <enclosure url="https://github.com/jorgeMartinez293/vidrio-releases/releases/latest/download/vidrio23-19.delta" sparkle:deltaFrom="19" length="476802" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="5pPLHwJ4EfPBsfvaIKwDMdrBw+t9VH4GdZH28aHnHSsP4hu2MSlXvimgKFVODNgdeQoUeG8UmuoFSxm6//GzCg=="/>
+                <enclosure url="https://github.com/jorgeMartinez293/vidrio-releases/releases/latest/download/vidrio23-18.delta" sparkle:deltaFrom="18" length="817198" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="L6nXn+r2Zt4HIDvh63FByluU1oceIGagkt+ghQC5N72LuHasOTHvgzyRIr2dGvtXbuS6voSeb4rfRHu/QbiqBg=="/>
+            </sparkle:deltas>
+        </item>
+        <item>
             <title>2.11</title>
             <pubDate>Fri, 16 Oct 2026 18:59:19 +0200</pubDate>
             <sparkle:version>22</sparkle:version>
@@ -30,21 +45,6 @@
                 <enclosure url="https://github.com/jorgeMartinez293/vidrio-releases/releases/latest/download/vidrio21-18.delta" sparkle:deltaFrom="18" length="782558" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="zitfnYPqq8Od9obKwdKppKtoYMqrfNlK22kkqiM498EsMFRU/r3MaL/1FTEY2KuPO4PtlATZgn8QEDvn5NLDDw=="/>
                 <enclosure url="https://github.com/jorgeMartinez293/vidrio-releases/releases/latest/download/vidrio21-17.delta" sparkle:deltaFrom="17" length="782010" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="hiJnIu5GF2t/BxyVDVr58eaYJqGHyKrDjQovheDDTVcJ+UgJVDmD2a4v2dwlBBFw+riM28l5UYl+XAwZuSA6CA=="/>
                 <enclosure url="https://github.com/jorgeMartinez293/vidrio-releases/releases/latest/download/vidrio21-16.delta" sparkle:deltaFrom="16" length="837534" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="I9HU9j3virVTOAWX1bLKncqK4QwPAmeCMC/cnchwKr/hSiZt8LTC5KMo+JwCDkmax82SceI99WTK2HBly3hFAw=="/>
-            </sparkle:deltas>
-        </item>
-        <item>
-            <title>2.9</title>
-            <pubDate>Tue, 22 Sep 2026 17:55:57 +0200</pubDate>
-            <sparkle:version>20</sparkle:version>
-            <sparkle:shortVersionString>2.9</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/jorgeMartinez293/vidrio-releases/releases/latest/download/vidrio-2.9.zip" length="4411364" type="application/octet-stream" sparkle:edSignature="lIrQkxJz89ygzVBGtDE2Dtrv+rI0JWfRjWtcFPHJexEnuSmnd3pykcYZUVjM9mLiPPuvMVhqaxYauzyh3zntDw=="/>
-            <sparkle:deltas>
-                <enclosure url="https://github.com/jorgeMartinez293/vidrio-releases/releases/latest/download/vidrio20-19.delta" sparkle:deltaFrom="19" length="380918" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="rQeDUg1vuO4GxnqCSVRmrGhoT1LIPkmryOaLO51GEG4440pCOHP/w8QNIABfYTLuRf/gseGtxQkGc3rYGdD7CA=="/>
-                <enclosure url="https://github.com/jorgeMartinez293/vidrio-releases/releases/latest/download/vidrio20-18.delta" sparkle:deltaFrom="18" length="775946" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="4kzgFfS51mx8XDjs5/6GnLyrvaNR3Xci2y9f97qskWyhNaK3xym0V7LjpsN7o0MMvBf0k2AQItBsnwxIs6BhDQ=="/>
-                <enclosure url="https://github.com/jorgeMartinez293/vidrio-releases/releases/latest/download/vidrio20-17.delta" sparkle:deltaFrom="17" length="777206" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="5jgSAzp8ExhAkEYwdFvzfB6ZQJx9Nm2TSh4Njxx5SEPJ2HdQsaxjglW8SOOw1gU4loFgPTNutNpIm2fzIbU5Dg=="/>
-                <enclosure url="https://github.com/jorgeMartinez293/vidrio-releases/releases/latest/download/vidrio20-16.delta" sparkle:deltaFrom="16" length="836318" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="MRCxSQx1a3tUJS6c1tMp7OBxc1CoDEbU0mhckV7QPoqb8T4B7io6eoCbOrHkrROp36VdyIoVF+g04qCXCTXpDw=="/>
-                <enclosure url="https://github.com/jorgeMartinez293/vidrio-releases/releases/latest/download/vidrio20-15.delta" sparkle:deltaFrom="15" length="843950" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="K+2Rr+q1WjTJay2JJl0fvivqFhovfntVkHAs5OupxBFaS2Joc/VXhNjj3GimByg1pRZLWVOvagHg9a9t9pekAA=="/>
             </sparkle:deltas>
         </item>
     </channel>

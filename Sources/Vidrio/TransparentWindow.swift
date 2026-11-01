@@ -103,16 +103,87 @@ class TransparentWindow: NSWindow {
         return true
     }
 
+    /// Frame the window had right before it was last zoomed. AppKit's own
+    /// "user frame" is restored by `zoom(_:)`, but dragging a zoomed window by
+    /// its titlebar never triggers that, so we keep our own copy to restore
+    /// the original size on drag-out (like other macOS apps do).
+    private var preZoomFrame: NSRect?
+
+    /// Height of the titlebar hit area used for double-click zoom / drag-out.
+    private let titlebarHitHeight: CGFloat = 50
+
+    override func zoom(_ sender: Any?) {
+        if !isZoomed {
+            preZoomFrame = frame
+        }
+        super.zoom(sender)
+    }
+
     override func mouseDown(with event: NSEvent) {
-        if event.clickCount == 2 {
-            let locationInWindow = event.locationInWindow
-            // If the double-click is in the top 50 pixels (title bar area)
-            if locationInWindow.y >= self.frame.height - 50 {
-                self.zoom(nil)
+        let inTitlebar = event.locationInWindow.y >= frame.height - titlebarHitHeight
+        if inTitlebar {
+            if event.clickCount == 2 {
+                zoom(nil)
+                return
+            }
+            if event.clickCount == 1, isZoomed, let restoreFrame = preZoomFrame {
+                dragOutOfZoom(startingAt: event, restoreTo: restoreFrame)
                 return
             }
         }
         super.mouseDown(with: event)
+    }
+
+    /// Tracks a titlebar drag on a zoomed window. Once the pointer moves past
+    /// a small threshold the window shrinks back to its pre-zoom size with a
+    /// short animation. The animation is driven by hand (instead of
+    /// `setFrame(animate: true)`, which blocks) so the window keeps following
+    /// the pointer while it shrinks. The grab point keeps its relative
+    /// horizontal position and distance from the top edge throughout.
+    private func dragOutOfZoom(startingAt event: NSEvent, restoreTo restoreFrame: NSRect) {
+        let duration: TimeInterval = 0.2
+        let startMouse = NSEvent.mouseLocation
+        let zoomedFrame = frame
+        let ratio = (startMouse.x - zoomedFrame.minX) / max(zoomedFrame.width, 1)
+        let topGap = zoomedFrame.maxY - startMouse.y
+        var animationStart: Date?
+
+        func update() {
+            guard let start = animationStart else { return }
+            let t = min(1, Date().timeIntervalSince(start) / duration)
+            let eased = 1 - pow(1 - t, 3) // ease-out cubic
+            let width = zoomedFrame.width + (restoreFrame.width - zoomedFrame.width) * eased
+            let height = zoomedFrame.height + (restoreFrame.height - zoomedFrame.height) * eased
+            let mouse = NSEvent.mouseLocation
+            let target = NSRect(
+                x: mouse.x - ratio * width,
+                y: mouse.y + topGap - height,
+                width: width,
+                height: height
+            )
+            if target != frame {
+                setFrame(target, display: true, animate: false)
+            }
+        }
+
+        while true {
+            // Time out every frame so the animation advances even when the
+            // pointer is still.
+            let next = nextEvent(
+                matching: [.leftMouseDragged, .leftMouseUp],
+                until: Date(timeIntervalSinceNow: 1.0 / 60.0),
+                inMode: .eventTracking,
+                dequeue: true
+            )
+            if next?.type == .leftMouseUp { break }
+
+            if animationStart == nil {
+                let mouse = NSEvent.mouseLocation
+                guard hypot(mouse.x - startMouse.x, mouse.y - startMouse.y) > 3 else { continue }
+                animationStart = Date()
+            }
+            update()
+        }
     }
 }
 
