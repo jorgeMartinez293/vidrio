@@ -62,7 +62,7 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
     /// Solid color layer between the blur and the terminal text. Empty (clear)
     /// when `settings.backgroundColorEnabled` is false, preserving pure blur.
     private var backgroundOverlay: NSView!
-    private var visualEffectView: NSVisualEffectView!
+    private var backdropView: BackdropView!
     var isClosing = false
     private var processStarted = false
     private var shellExecutable: String = "/bin/zsh"
@@ -101,6 +101,16 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
     var sideInset: CGFloat = 10 { didSet { updateChrome() } }
     var bottomInset: CGFloat = 10 { didSet { updateChrome() } }
 
+    /// Whether this controller draws its own blur. A host that already
+    /// puts one behind the whole pane (`GridViewController`'s cells) turns
+    /// it off: Liquid Glass stacked on glass would darken the pane twice.
+    var showsBackdrop: Bool = true { didSet { applyBackdrop() } }
+
+    private func applyBackdrop() {
+        guard let backdropView else { return }
+        backdropView.apply(showsBackdrop ? settings.blurMaterial : .none)
+    }
+
     private var terminalTopConstraint: NSLayoutConstraint!
     private var terminalLeadingConstraint: NSLayoutConstraint!
     private var terminalTrailingConstraint: NSLayoutConstraint!
@@ -114,10 +124,10 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
 
     private func updateChrome() {
         guard isViewLoaded, terminalTopConstraint != nil else { return }
-        visualEffectView.layer?.cornerRadius = cornerRadius
+        backdropView.cornerRadius = cornerRadius
         backgroundOverlay.layer?.cornerRadius = cornerRadius
         terminalView.layer?.cornerRadius = cornerRadius
-        visualEffectView.layer?.maskedCorners = Self.bottomCorners
+        backdropView.maskedCorners = Self.bottomCorners
         backgroundOverlay.layer?.maskedCorners = Self.bottomCorners
         terminalView.layer?.maskedCorners = Self.bottomCorners
         terminalTopConstraint.constant = topInset
@@ -202,29 +212,21 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
 
 
     func setupTerminal() {
-        // Setup Visual Effect View for Blur (hidden when material is "none")
-        visualEffectView = NSVisualEffectView(frame: view.bounds)
-        if let material = settings.blurMaterial.material {
-            visualEffectView.material = material
-            visualEffectView.isHidden = false
-        } else {
-            visualEffectView.isHidden = true
-        }
-        visualEffectView.blendingMode = .behindWindow
-        visualEffectView.state = .active
-        visualEffectView.translatesAutoresizingMaskIntoConstraints = false
-        visualEffectView.wantsLayer = true
-        visualEffectView.layer?.cornerRadius = cornerRadius
-        visualEffectView.layer?.maskedCorners = Self.bottomCorners
-        visualEffectView.layer?.masksToBounds = true
+        // Blur backdrop (hidden when material is "none", or when a host
+        // draws its own, see `showsBackdrop`)
+        backdropView = BackdropView(frame: view.bounds)
+        backdropView.translatesAutoresizingMaskIntoConstraints = false
+        backdropView.cornerRadius = cornerRadius
+        backdropView.maskedCorners = Self.bottomCorners
+        applyBackdrop()
 
-        view.addSubview(visualEffectView)
+        view.addSubview(backdropView)
 
         NSLayoutConstraint.activate([
-            visualEffectView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            visualEffectView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            visualEffectView.topAnchor.constraint(equalTo: view.topAnchor),
-            visualEffectView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+            backdropView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            backdropView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            backdropView.topAnchor.constraint(equalTo: view.topAnchor),
+            backdropView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
 
         // Background color overlay: sits on top of the blur, under the text.
@@ -364,13 +366,7 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
 
     func applySettings(_ newSettings: TerminalSettings) {
         settings = newSettings
-
-        if let material = settings.blurMaterial.material {
-            visualEffectView.material = material
-            visualEffectView.isHidden = false
-        } else {
-            visualEffectView.isHidden = true
-        }
+        applyBackdrop()
 
         if settings.backgroundColorEnabled {
             backgroundOverlay.layer?.backgroundColor =

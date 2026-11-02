@@ -193,13 +193,8 @@ private final class MergeGhostWindow: NSWindow {
         ignoresMouseEvents = true
         level = .floating
 
-        let backdrop = NSVisualEffectView(frame: NSRect(origin: .zero, size: frame.size))
-        backdrop.blendingMode = .behindWindow
-        backdrop.state = .active
-        backdrop.material = .hudWindow
-        backdrop.wantsLayer = true
-        backdrop.layer?.cornerRadius = 16
-        backdrop.layer?.masksToBounds = true
+        let backdrop = BackdropView(frame: NSRect(origin: .zero, size: frame.size))
+        backdrop.cornerRadius = 16
         backdrop.autoresizingMask = [.width, .height]
 
         let imageView = NSImageView(frame: backdrop.bounds)

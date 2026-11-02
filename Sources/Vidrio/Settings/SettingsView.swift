@@ -5,6 +5,15 @@ struct SettingsView: View {
 
     private var s: Binding<TerminalSettings> { $viewModel.settings }
 
+    /// On/off view of `blurMaterial`. Turning it back on picks the default
+    /// material, so the setting still means the same on an older macOS.
+    private var blurEnabled: Binding<Bool> {
+        Binding(
+            get: { viewModel.settings.blurMaterial != .none },
+            set: { viewModel.settings.blurMaterial = $0 ? TerminalSettings.defaults.blurMaterial : .none }
+        )
+    }
+
     var body: some View {
         Form {
             Section("Tamaño (al abrir)") {
@@ -17,10 +26,15 @@ struct SettingsView: View {
             }
 
             Section("Fondo") {
-                Picker("Desenfoque", selection: s.blurMaterial) {
-                    ForEach(BlurMaterial.allCases, id: \.self) { material in
-                        Text(material.displayName).tag(material)
+                if BackdropView.supportsMaterials {
+                    Picker("Desenfoque", selection: s.blurMaterial) {
+                        ForEach(BlurMaterial.allCases, id: \.self) { material in
+                            Text(material.displayName).tag(material)
+                        }
                     }
+                } else {
+                    // Liquid Glass has no materials to pick from.
+                    Toggle("Desenfoque", isOn: blurEnabled)
                 }
                 Toggle("Color de fondo", isOn: s.backgroundColorEnabled)
                 if viewModel.settings.backgroundColorEnabled {

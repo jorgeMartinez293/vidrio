@@ -1,7 +1,9 @@
 import AppKit
 
 /// User-selectable blur presets. Each maps to an NSVisualEffectView material,
-/// except `.none` which means "no blur" (the visual effect view is hidden).
+/// except `.none` which means "no blur" (the backdrop is hidden). On macOS
+/// 26+ the backdrop is Liquid Glass, so only `.none` versus anything else
+/// matters there (see `BackdropView`).
 enum BlurMaterial: String, Codable, CaseIterable {
     case hudWindow
     case popover

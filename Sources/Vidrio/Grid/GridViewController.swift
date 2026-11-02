@@ -26,7 +26,7 @@ class GridViewController: NSViewController, TerminalHosting {
         /// cell animates to a larger slot, the terminal inside is already
         /// at its final size and this is what shows around it instead of a
         /// bare gap.
-        let cellBackdrop: NSVisualEffectView
+        let cellBackdrop: BackdropView
         var isClosing = false
     }
 
@@ -149,9 +149,10 @@ class GridViewController: NSViewController, TerminalHosting {
         cell.wantsLayer = true
         cell.layer?.masksToBounds = true
 
-        let cellBackdrop = NSVisualEffectView()
-        cellBackdrop.blendingMode = .behindWindow
-        cellBackdrop.state = .active
+        // The cell's backdrop is the pane's only blur; the terminal's own
+        // would stack a second one on top of it.
+        controller.showsBackdrop = false
+        let cellBackdrop = BackdropView()
         cell.addSubview(cellBackdrop)
 
         panes.append(Pane(controller: controller, cell: cell, cellBackdrop: cellBackdrop))
@@ -520,15 +521,8 @@ class GridViewController: NSViewController, TerminalHosting {
             // cellBackdrop's rounded corner.
             pane.cell.layer?.cornerRadius = radius
 
-            pane.cellBackdrop.wantsLayer = true
-            pane.cellBackdrop.layer?.masksToBounds = true
-            pane.cellBackdrop.layer?.cornerRadius = radius
-            if let material = settings.blurMaterial.material {
-                pane.cellBackdrop.material = material
-                pane.cellBackdrop.isHidden = false
-            } else {
-                pane.cellBackdrop.isHidden = true
-            }
+            pane.cellBackdrop.cornerRadius = radius
+            pane.cellBackdrop.apply(settings.blurMaterial)
         }
     }
 

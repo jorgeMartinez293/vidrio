@@ -38,7 +38,7 @@ Every window is a grid of live terminal sessions.
 
 ## Look and feel
 
-- Translucent window with adjustable blur material and opacity.
+- Translucent window with adjustable blur and opacity (Liquid Glass on macOS 26+, selectable blur materials on older systems).
 - Optional solid background color.
 - Custom font, size, text and cursor colors.
 - Dimmed-text brightness control, so secondary text in CLI tools stays readable.
