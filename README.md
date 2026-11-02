@@ -2,11 +2,6 @@
 
 A native macOS terminal that tiles your sessions automatically. Lightweight, minimalist, and aesthetic.
 
-<!-- SCREENSHOT: hero shot. A multi-pane grid over a nice wallpaper, translucent blur visible. -->
-<p align="center">
-  <img src="docs/screenshots/hero.png" alt="Tiling Terminal hero screenshot" width="900">
-</p>
-
 ## Highlights
 
 - **Tiling window management.** Panes arrange themselves into a grid that fills the window. No manual resizing, no dragging dividers around.
@@ -24,20 +19,10 @@ Every window is a grid of live terminal sessions.
 - The **focused pane grows** so it always reads as the main one.
 - Moving between panes is a single shortcut away.
 
-<!-- SCREENSHOT: a window with 3-4 panes tiled, one of them focused and larger. -->
-<p align="center">
-  <img src="docs/screenshots/tiling.png" alt="Tiled panes with a focused pane enlarged" width="800">
-</p>
-
 ### Rearranging
 
 - **Swap panes:** hold `⌘` and drag a pane by its top strip. It lifts out of the grid and trades places with the one you drop it on, with a live preview of the landing slot.
 - **Merge windows:** hold `⌘` and drag a whole window onto another one. The target's panes spring aside to make room, and every session, live shells included, moves into the target window.
-
-<!-- SCREENSHOT or GIF: dragging a pane to swap it / merging two windows. -->
-<p align="center">
-  <img src="docs/screenshots/rearrange.gif" alt="Dragging panes and merging windows" width="800">
-</p>
 
 ### Keyboard shortcuts
 
@@ -60,19 +45,9 @@ Every window is a grid of live terminal sessions.
 - Lines and inline images stay square when you resize or run TUIs.
 - Settings apply live, with no restart.
 
-<!-- SCREENSHOT: the settings window. -->
-<p align="center">
-  <img src="docs/screenshots/settings.png" alt="Settings window" width="700">
-</p>
-
 ## Greeter
 
 New windows can open with an animated sprite and a short system info line. It can show a GIF, a still image, or switch automatically based on battery.
-
-<!-- SCREENSHOT: a fresh window showing the greeter sprite and info line. -->
-<p align="center">
-  <img src="docs/screenshots/greeter.png" alt="Greeter with animated sprite" width="700">
-</p>
 
 ## Requirements
 
