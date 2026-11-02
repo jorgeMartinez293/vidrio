@@ -19,6 +19,14 @@ struct GridLayoutTests {
         #expect(abs(layout.frames[0].height - (bounds.height - 16)) < 0.5)
     }
 
+    @Test func testAppendingRangeMatchesAddingOneAtATime() {
+        // Merging a 3-pane window into a 2-pane one must tile exactly as if
+        // the three had been opened there one after another.
+        let merged = GridLayout.appending(2..<5, to: GridLayout.columns(forCount: 2))
+        #expect(merged == GridLayout.columns(forCount: 5))
+        #expect(GridLayout.appending(3..<3, to: [[0, 2], [1]]) == [[0, 2], [1]])
+    }
+
     @Test func testPanesFillColumnsWithoutMovingExistingOnes() {
         // 3 -> [0 2] [1]: the third pane goes under the first, the right
         // column stays full height. 5 opens a third column instead of
@@ -48,6 +56,27 @@ struct GridLayoutTests {
         let columns = GridLayout.columns(forCount: 5)
         #expect(GridLayout.removing(1, from: columns) == [[0, 1], [2], [3]])
         #expect(GridLayout.removing(4, from: columns) == [[0, 2], [1, 3]])
+    }
+
+    @Test func testMergingPlacesIncomingColumnsOnEitherSideOrFills() {
+        // Target [0 2] [1], incoming window shaped [a b] [c] -> 3, 4, 5.
+        let target = GridLayout.columns(forCount: 3)
+        #expect(GridLayout.merging(
+            incomingColumnCounts: [2, 1], startingAt: 3, into: target, placement: .left
+        ) == [[3, 4], [5], [0, 2], [1]])
+        #expect(GridLayout.merging(
+            incomingColumnCounts: [2, 1], startingAt: 3, into: target, placement: .right
+        ) == [[0, 2], [1], [3, 4], [5]])
+        #expect(GridLayout.merging(
+            incomingColumnCounts: [2, 1], startingAt: 3, into: target, placement: .fill
+        ) == GridLayout.columns(forCount: 6))
+    }
+
+    @Test func testSwappingTradesTwoPanesAndKeepsColumnShapes() {
+        let columns = GridLayout.columns(forCount: 5) // [0 2] [1 3] [4]
+        #expect(GridLayout.swapping(0, 4, in: columns) == [[4, 2], [1, 3], [0]])
+        #expect(GridLayout.swapping(3, 1, in: columns) == [[0, 2], [3, 1], [4]])
+        #expect(GridLayout.swapping(2, 2, in: columns) == columns)
     }
 
     @Test func testNewPaneFillsGapLeftByClosedOne() {

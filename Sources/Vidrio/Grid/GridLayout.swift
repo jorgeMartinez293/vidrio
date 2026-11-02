@@ -59,6 +59,46 @@ enum GridLayout {
         return columns
     }
 
+    /// `columns` with panes `indices` placed one after another, exactly as
+    /// if each had been added on its own — used when a whole window's panes
+    /// are merged into another grid at once.
+    static func appending(_ indices: Range<Int>, to columns: [[Int]]) -> [[Int]] {
+        indices.reduce(columns) { appending($1, to: $0) }
+    }
+
+    /// Where a merge drops another grid's panes.
+    enum MergePlacement: Equatable {
+        /// As if each pane had been opened here, filling short columns.
+        case fill
+        /// The other grid's columns, as they were, left of this grid's.
+        case left
+        /// The other grid's columns, as they were, right of this grid's.
+        case right
+    }
+
+    /// `columns` with another grid's panes merged in. The incoming panes
+    /// take indices `first...` in reading order (column by column, each top
+    /// to bottom), and `incomingColumnCounts` says how many of them each of
+    /// their original columns held, so `.left` and `.right` can keep that
+    /// shape.
+    static func merging(
+        incomingColumnCounts: [Int],
+        startingAt first: Int,
+        into columns: [[Int]],
+        placement: MergePlacement
+    ) -> [[Int]] {
+        var next = first
+        let incoming: [[Int]] = incomingColumnCounts.filter { $0 > 0 }.map { count in
+            defer { next += count }
+            return Array(next..<next + count)
+        }
+        switch placement {
+        case .fill: return appending(first..<next, to: columns)
+        case .left: return incoming + columns
+        case .right: return columns + incoming
+        }
+    }
+
     /// `columns` with pane `index` taken out — the panes around it keep
     /// their places, an emptied column disappears — and every higher pane
     /// index shifted down by one to match the pane list it was removed from.
@@ -70,11 +110,18 @@ enum GridLayout {
             .filter { !$0.isEmpty }
     }
 
+    /// `columns` with panes `a` and `b` trading places — what dropping a
+    /// dragged pane onto another does. Every column keeps its length, so
+    /// nothing else moves.
+    static func swapping(_ a: Int, _ b: Int, in columns: [[Int]]) -> [[Int]] {
+        columns.map { column in
+            column.map { $0 == a ? b : $0 == b ? a : $0 }
+        }
+    }
+
     /// The columns panes `0..<count` end up in when added one at a time.
     static func columns(forCount count: Int) -> [[Int]] {
-        (0..<max(count, 0)).reduce(into: [[Int]]()) { columns, index in
-            columns = appending(index, to: columns)
-        }
+        appending(0..<max(count, 0), to: [])
     }
 
     // MARK: - Geometry

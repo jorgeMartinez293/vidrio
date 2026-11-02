@@ -1,4 +1,5 @@
 import Cocoa
+import SwiftTerm
 
 class TransparentWindow: NSWindow {
     /// Fired whenever first responder successfully changes (e.g. the user
@@ -8,6 +9,11 @@ class TransparentWindow: NSWindow {
     /// outside its module; watching it at the window level instead works
     /// for any responder.
     var onFirstResponderChange: ((NSResponder?) -> Void)?
+
+    /// Starts a merge drag when the user ⌘-drags this window by its top
+    /// strip. Set by the app delegate for windows that can be merged; nil
+    /// (or a nil session) leaves ⌘-drags alone.
+    var makeMergeSession: ((TransparentWindow) -> WindowMergeSession?)?
 
     override func makeFirstResponder(_ responder: NSResponder?) -> Bool {
         let result = super.makeFirstResponder(responder)
@@ -58,6 +64,13 @@ class TransparentWindow: NSWindow {
         NotificationCenter.default.addObserver(
             self, selector: #selector(adoptTrafficLights),
             name: NSWindow.didUpdateNotification, object: self
+        )
+        // A plain titlebar drag (⌘ not held at the start) is AppKit's own
+        // window move, which never reaches `runMergeDrag`; watch it instead
+        // so pressing ⌘ partway through still turns it into a merge.
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(nativeMoveWillBegin),
+            name: NSWindow.willMoveNotification, object: self
         )
     }
 
@@ -117,6 +130,188 @@ class TransparentWindow: NSWindow {
             preZoomFrame = frame
         }
         super.zoom(sender)
+    }
+
+    // MARK: - ⌘-drag to merge
+
+    /// Intercepted here rather than in `mouseDown` so the drag is ours before
+    /// the titlebar starts AppKit's own window move.
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .leftMouseDown, isMergeDragHandle(event) {
+            if event.modifierFlags.contains(.command), let session = makeMergeSession?(self) {
+                runMergeDrag(from: event, session: session)
+                return
+            }
+            // Might become a native window move; start watching now in
+            // case `willMoveNotification` comes late or not at all.
+            startNativeMoveWatch()
+        } else if event.type == .leftMouseDown, event.modifierFlags.contains(.command),
+                  let grid = contentViewController as? GridViewController,
+                  grid.canDragPane(at: event.locationInWindow) {
+            runPaneDrag(from: event, grid: grid)
+            return
+        }
+        super.sendEvent(event)
+    }
+
+    // MARK: - ⌘-drag to rearrange panes
+
+    /// Lifts the pane under a ⌘-press once the pointer really moves, and
+    /// lets the grid move it around until release. A ⌘-click that never
+    /// moves is handed to the terminal untouched (it opens links).
+    /// Escape puts the pane back.
+    private func runPaneDrag(from mouseDown: NSEvent, grid: GridViewController) {
+        let start = mouseDown.locationInWindow
+        var dragging = false
+        var cancelled = false
+
+        while true {
+            guard let next = nextEvent(
+                matching: [.leftMouseDragged, .leftMouseUp, .keyDown],
+                until: .distantFuture, inMode: .eventTracking, dequeue: true
+            ) else { continue }
+            let point = next.locationInWindow
+
+            switch next.type {
+            case .keyDown:
+                // Swallow every key until release, but only Escape acts.
+                guard next.keyCode == 53, !cancelled else { continue }
+                cancelled = true
+                if dragging { grid.endPaneDrag(cancelled: true) }
+            case .leftMouseUp:
+                if dragging {
+                    grid.endPaneDrag(cancelled: cancelled)
+                } else if !cancelled {
+                    // Replay the click: up queued first, so it follows the
+                    // down however the terminal handles it.
+                    NSApp.postEvent(next, atStart: true)
+                    super.sendEvent(mouseDown)
+                }
+                return
+            default:
+                guard !cancelled else { continue }
+                if !dragging {
+                    guard hypot(point.x - start.x, point.y - start.y) > 4 else { continue }
+                    guard grid.beginPaneDrag(at: start) else {
+                        NSApp.postEvent(next, atStart: true)
+                        super.sendEvent(mouseDown)
+                        return
+                    }
+                    dragging = true
+                }
+                grid.updatePaneDrag(at: point)
+            }
+        }
+    }
+
+    /// The top strip of the window, minus anything clickable in it: the
+    /// traffic lights, and terminal text (⌘-click there opens links).
+    private func isMergeDragHandle(_ event: NSEvent) -> Bool {
+        guard !styleMask.contains(.fullScreen),
+              event.locationInWindow.y >= frame.height - titlebarHitHeight else { return false }
+        var view = contentView?.superview?.hitTest(event.locationInWindow)
+        while let current = view {
+            if current is NSControl || current is TerminalView { return false }
+            view = current.superview
+        }
+        return true
+    }
+
+    /// Moves the window with the pointer, by hand, so the merge session can
+    /// follow the pointer (and ⌘) on every step. Releasing ⌘ mid-drag turns
+    /// it back into a plain move; Escape puts the window back.
+    private func runMergeDrag(from event: NSEvent, session: WindowMergeSession) {
+        let startMouse = NSEvent.mouseLocation
+        let startOrigin = frame.origin
+        var started = false
+        isRunningMergeDrag = true
+        defer { isRunningMergeDrag = false }
+
+        while true {
+            guard let next = nextEvent(
+                matching: [.leftMouseDragged, .leftMouseUp, .flagsChanged, .keyDown],
+                until: .distantFuture, inMode: .eventTracking, dequeue: true
+            ) else { continue }
+            let mouse = NSEvent.mouseLocation
+            let commandHeld = next.modifierFlags.contains(.command)
+
+            switch next.type {
+            case .keyDown:
+                guard next.keyCode == 53 else { continue } // Escape
+                if started { session.cancel(restoringOrigin: startOrigin) }
+                return
+            case .leftMouseUp:
+                if started { session.finish(at: mouse, commandHeld: commandHeld) }
+                return
+            default:
+                if !started {
+                    guard hypot(mouse.x - startMouse.x, mouse.y - startMouse.y) > 3 else { continue }
+                    started = true
+                    session.begin()
+                }
+                setFrameOrigin(NSPoint(
+                    x: startOrigin.x + mouse.x - startMouse.x,
+                    y: startOrigin.y + mouse.y - startMouse.y
+                ))
+                session.update(at: mouse, commandHeld: commandHeld)
+            }
+        }
+    }
+
+    /// Set while `runMergeDrag` moves the window itself, so its own
+    /// `setFrameOrigin` calls aren't mistaken for a native move.
+    private var isRunningMergeDrag = false
+    /// Polls pointer, button and ⌘ during a native window move: AppKit
+    /// delivers no events to the app while it drags the window.
+    private var nativeMoveTimer: Timer?
+    private var nativeMoveSession: WindowMergeSession?
+    private var nativeMoveStartOrigin: NSPoint = .zero
+    /// Whether the window has really started moving — a press in the top
+    /// strip can also just be a click or a text selection, which must
+    /// never turn into a merge when ⌘ is pressed.
+    private var nativeMoveConfirmed = false
+
+    @objc private func nativeMoveWillBegin() {
+        guard !isRunningMergeDrag, NSEvent.pressedMouseButtons & 1 != 0 else { return }
+        startNativeMoveWatch()
+        nativeMoveConfirmed = true
+    }
+
+    private func startNativeMoveWatch() {
+        guard nativeMoveTimer == nil, makeMergeSession != nil else { return }
+        nativeMoveStartOrigin = frame.origin
+        nativeMoveConfirmed = false
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.nativeMoveTick() }
+        }
+        // `.common` so it keeps firing inside AppKit's event-tracking loop.
+        RunLoop.main.add(timer, forMode: .common)
+        nativeMoveTimer = timer
+    }
+
+    private func nativeMoveTick() {
+        let mouse = NSEvent.mouseLocation
+        let commandHeld = NSEvent.modifierFlags.contains(.command)
+        let buttonDown = NSEvent.pressedMouseButtons & 1 != 0
+        if frame.origin != nativeMoveStartOrigin { nativeMoveConfirmed = true }
+
+        guard buttonDown else {
+            nativeMoveSession?.finish(at: mouse, commandHeld: commandHeld)
+            stopNativeMoveWatch()
+            return
+        }
+        if nativeMoveSession == nil, commandHeld, nativeMoveConfirmed, !isRunningMergeDrag {
+            nativeMoveSession = makeMergeSession?(self)
+            nativeMoveSession?.begin()
+        }
+        nativeMoveSession?.update(at: mouse, commandHeld: commandHeld)
+    }
+
+    private func stopNativeMoveWatch() {
+        nativeMoveTimer?.invalidate()
+        nativeMoveTimer = nil
+        nativeMoveSession = nil
+        nativeMoveConfirmed = false
     }
 
     override func mouseDown(with event: NSEvent) {

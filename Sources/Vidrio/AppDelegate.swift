@@ -235,6 +235,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let gridViewController = GridViewController()
             gridViewController.settings = settings
             newWindow.contentViewController = gridViewController
+            // ⌘-drag by the top strip onto another window merges this
+            // window's panes into it.
+            newWindow.makeMergeSession = { [weak self] window in
+                guard let self else { return nil }
+                return WindowMergeSession(
+                    source: window,
+                    candidates: { [weak self] in
+                        guard let self else { return [] }
+                        return NSApp.orderedWindows.filter { self.windows.contains($0) }
+                    },
+                    dismiss: { [weak self] in self?.dismissWindow($0) }
+                )
+            }
         }
 
         // Add to our set to keep alive

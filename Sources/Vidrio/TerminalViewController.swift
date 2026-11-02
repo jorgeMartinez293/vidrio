@@ -253,6 +253,9 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
         terminalView = VidrioTerminalView(frame: view.bounds)
         terminalView.translatesAutoresizingMaskIntoConstraints = false
         terminalView.processDelegate = self
+        terminalView.terminal.registerOscHandler(code: Self.greetOSCCode) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.handleGreetRequest() }
+        }
         terminalView.scrollerEnabled = false
         // Trackpad touches are needed to count the fingers behind a scroll.
         terminalView.allowedTouchTypes.insert(.indirect)
@@ -403,6 +406,22 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
         let config = greeterConfig
         let bytes = GreetingRenderer.render(spriteURL: spriteURL, displayMode: config.displayMode, shellExecutable: shellExecutable, fields: config.enabledFields, bulletColorHex: config.bulletColorHex)
         terminalView.feed(byteArray: bytes[...])
+    }
+
+    /// OSC code a shell writes (`printf '\e]7770;\a'`) to ask for the greeting again, e.g. from a
+    /// `c` alias that clears the screen. Unknown OSC codes are ignored by other terminals.
+    private static let greetOSCCode = 7770
+    /// Byte written back to the shell once the greeting is on screen, so it can wait for it
+    /// before drawing the next prompt (the greeting is fed asynchronously, after the OSC
+    /// parse finishes, and would otherwise land below the prompt).
+    private static let greetAckByte: UInt8 = 0x06
+
+    private func handleGreetRequest() {
+        refreshSerenoGreeter()
+        // Ack even when the greeting was skipped (alternate screen, no sprite) so the
+        // shell never has to sit out its timeout.
+        guard !isClosing, processStarted else { return }
+        terminalView.send([Self.greetAckByte])
     }
 
     /// The sprite the greeter should show right now: the fixed selection from
