@@ -196,11 +196,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     
     func createNewWindow(scriptPath: String? = nil) {
         let settings = SettingsStore.shared.current
-        let font = NSFont(name: settings.fontName, size: CGFloat(settings.fontSize))
-            ?? .monospacedSystemFont(ofSize: CGFloat(settings.fontSize), weight: .regular)
-
         let screenSize = NSScreen.main?.frame.size ?? CGSize(width: 800, height: 600)
-        let windowSize = WindowSizeCalculator.windowSize(cols: settings.cols, rows: settings.rows, font: font)
+        let windowSize = defaultWindowSize()
 
         // Offset new windows with an ever-increasing counter so windows
         // don't overlap even after previous ones have been closed
@@ -235,25 +232,91 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let gridViewController = GridViewController()
             gridViewController.settings = settings
             newWindow.contentViewController = gridViewController
-            // ⌘-drag by the top strip onto another window merges this
-            // window's panes into it.
-            newWindow.makeMergeSession = { [weak self] window in
-                guard let self else { return nil }
-                return WindowMergeSession(
-                    source: window,
-                    candidates: { [weak self] in
-                        guard let self else { return [] }
-                        return NSApp.orderedWindows.filter { self.windows.contains($0) }
-                    },
-                    dismiss: { [weak self] in self?.dismissWindow($0) }
-                )
-            }
+            enableGridDrags(on: newWindow)
         }
 
         // Add to our set to keep alive
         windows.insert(newWindow)
 
         newWindow.makeKeyAndOrderFront(nil)
+    }
+
+    /// Window size that fits the settings' columns × rows in the settings'
+    /// font.
+    private func defaultWindowSize() -> CGSize {
+        let settings = SettingsStore.shared.current
+        let font = NSFont(name: settings.fontName, size: CGFloat(settings.fontSize))
+            ?? .monospacedSystemFont(ofSize: CGFloat(settings.fontSize), weight: .regular)
+        return WindowSizeCalculator.windowSize(cols: settings.cols, rows: settings.rows, font: font)
+    }
+
+    /// Opens a default-sized grid window around a pane torn off another
+    /// window, live shell included, instead of starting a new shell. The
+    /// window's top-left corner goes where the pane was dropped
+    /// (`droppedFrame`, screen coordinates), kept on screen. Returns the
+    /// window's frame.
+    @discardableResult
+    func createWindow(adopting pane: TerminalViewController, droppedAt droppedFrame: NSRect) -> NSRect {
+        let size = defaultWindowSize()
+        var frame = NSRect(
+            x: droppedFrame.minX, y: droppedFrame.maxY - size.height,
+            width: size.width, height: size.height
+        )
+        let topLeft = NSPoint(x: droppedFrame.minX, y: droppedFrame.maxY)
+        let screen = NSScreen.screens.first { $0.frame.contains(topLeft) }
+            ?? NSScreen.screens.first { $0.frame.intersects(droppedFrame) }
+            ?? NSScreen.main
+        if let visible = screen?.visibleFrame {
+            // Right and bottom edges first, so a window larger than the
+            // screen still keeps its top-left corner (and titlebar) visible.
+            frame.origin.x = max(min(frame.minX, visible.maxX - frame.width), visible.minX)
+            frame.origin.y = min(max(frame.minY, visible.minY), visible.maxY - frame.height)
+        }
+
+        let newWindow = TransparentWindow(contentRect: frame)
+        newWindow.delegate = self
+        let gridViewController = GridViewController()
+        gridViewController.settings = SettingsStore.shared.current
+        gridViewController.initialPane = pane
+        newWindow.contentViewController = gridViewController
+        // Setting the content view controller sizes the window to its
+        // placeholder view; put it back where the pane was dropped.
+        newWindow.setFrame(frame, display: false)
+        enableGridDrags(on: newWindow)
+        windows.insert(newWindow)
+        newWindow.makeKeyAndOrderFront(nil)
+        return frame
+    }
+
+    /// ⌘-drag by the top strip onto another window merges this window's
+    /// panes into it; ⌘-dragging a pane out of it moves that pane into the
+    /// window it's dropped on, or into a window of its own.
+    private func enableGridDrags(on window: TransparentWindow) {
+        window.makeMergeSession = { [weak self] window in
+            guard let self else { return nil }
+            return WindowMergeSession(
+                source: window,
+                candidates: { [weak self] in self?.orderedTerminalWindows() ?? [] },
+                dismiss: { [weak self] in self?.dismissWindow($0) }
+            )
+        }
+        window.makePaneTearOff = { [weak self] window, grid, mouse in
+            guard self != nil else { return nil }
+            return PaneTearOffSession(
+                sourceWindow: window,
+                sourceGrid: grid,
+                at: mouse,
+                candidates: { [weak self] in self?.orderedTerminalWindows() ?? [] },
+                openWindow: { [weak self] pane, droppedFrame in
+                    self?.createWindow(adopting: pane, droppedAt: droppedFrame) ?? droppedFrame
+                }
+            )
+        }
+    }
+
+    /// This app's terminal windows, front to back.
+    private func orderedTerminalWindows() -> [NSWindow] {
+        NSApp.orderedWindows.filter { windows.contains($0) }
     }
 
     /// Fallback for ⌘W outside a grid window (e.g. a script-launched

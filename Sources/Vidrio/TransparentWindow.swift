@@ -15,6 +15,11 @@ class TransparentWindow: NSWindow {
     /// (or a nil session) leaves ⌘-drags alone.
     var makeMergeSession: ((TransparentWindow) -> WindowMergeSession?)?
 
+    /// Starts tearing off the pane being ⌘-dragged in `grid` once the
+    /// pointer (at the given screen point) leaves this window. Set by the
+    /// app delegate; nil (or a nil session) keeps panes inside the window.
+    var makePaneTearOff: ((TransparentWindow, GridViewController, NSPoint) -> PaneTearOffSession?)?
+
     override func makeFirstResponder(_ responder: NSResponder?) -> Bool {
         let result = super.makeFirstResponder(responder)
         if result {
@@ -157,29 +162,43 @@ class TransparentWindow: NSWindow {
     // MARK: - ⌘-drag to rearrange panes
 
     /// Lifts the pane under a ⌘-press once the pointer really moves, and
-    /// lets the grid move it around until release. A ⌘-click that never
-    /// moves is handed to the terminal untouched (it opens links).
-    /// Escape puts the pane back.
+    /// lets the grid move it around until release. Pulled outside the
+    /// window, the pane is torn off (see `PaneTearOffSession`): dropped
+    /// there it moves into another window or one of its own. A ⌘-click
+    /// that never moves is handed to the terminal untouched (it opens
+    /// links). Escape puts the pane back.
     private func runPaneDrag(from mouseDown: NSEvent, grid: GridViewController) {
         let start = mouseDown.locationInWindow
         var dragging = false
         var cancelled = false
+        var tearOff: PaneTearOffSession?
 
         while true {
             guard let next = nextEvent(
-                matching: [.leftMouseDragged, .leftMouseUp, .keyDown],
+                matching: [.leftMouseDragged, .leftMouseUp, .flagsChanged, .keyDown],
                 until: .distantFuture, inMode: .eventTracking, dequeue: true
             ) else { continue }
             let point = next.locationInWindow
+            let mouse = NSEvent.mouseLocation
+            let commandHeld = next.modifierFlags.contains(.command)
 
             switch next.type {
             case .keyDown:
                 // Swallow every key until release, but only Escape acts.
                 guard next.keyCode == 53, !cancelled else { continue }
                 cancelled = true
+                tearOff?.cancel()
+                tearOff = nil
                 if dragging { grid.endPaneDrag(cancelled: true) }
+            case .flagsChanged:
+                // ⌘ picks whether another window takes the drop.
+                tearOff?.update(at: mouse, commandHeld: commandHeld)
             case .leftMouseUp:
-                if dragging {
+                if let tearOff {
+                    tearOff.finish(at: mouse, commandHeld: commandHeld)
+                    // Safety net: a no-op unless the tear-off couldn't run.
+                    grid.endPaneDrag(cancelled: true)
+                } else if dragging {
                     grid.endPaneDrag(cancelled: cancelled)
                 } else if !cancelled {
                     // Replay the click: up queued first, so it follows the
@@ -199,7 +218,19 @@ class TransparentWindow: NSWindow {
                     }
                     dragging = true
                 }
-                grid.updatePaneDrag(at: point)
+                let outside = !frame.contains(mouse)
+                if outside, tearOff == nil {
+                    tearOff = makePaneTearOff?(self, grid, mouse)
+                } else if !outside, let session = tearOff {
+                    session.cancel()
+                    tearOff = nil
+                    grid.endPaneTearOff()
+                }
+                if let tearOff {
+                    tearOff.update(at: mouse, commandHeld: commandHeld)
+                } else {
+                    grid.updatePaneDrag(at: point)
+                }
             }
         }
     }

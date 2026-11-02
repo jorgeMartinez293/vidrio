@@ -16,7 +16,8 @@ extension TerminalViewController: TerminalHosting {}
 /// sized to the pane count, new panes open without moving existing ones, and
 /// the focused pane's column and cell are enlarged. `⌘⇧N` adds a pane, `⌘`+arrow moves focus between panes, and `⌘W` closes the focused
 /// pane (or the window itself once only one pane is left). ⌘-dragging a
-/// pane lifts it out of the grid so it can trade places with another.
+/// pane lifts it out of the grid so it can trade places with another, or
+/// tear it off into a window of its own by dropping it outside.
 class GridViewController: NSViewController, TerminalHosting {
     private struct Pane {
         let controller: TerminalViewController
@@ -37,6 +38,9 @@ class GridViewController: NSViewController, TerminalHosting {
     private var columns: [[Int]] = []
     private var focusedIndex = 0
     private var hasAddedInitialPane = false
+    /// A pane torn off another window, which this grid starts with instead
+    /// of spawning a fresh shell. Set before the window first appears.
+    var initialPane: TerminalViewController?
     /// Applied to every pane as it's created, and live-reloaded onto all
     /// existing panes via `applySettings`.
     var settings: TerminalSettings = .defaults
@@ -62,6 +66,9 @@ class GridViewController: NSViewController, TerminalHosting {
         /// it back where it came from.
         var swapWith: Int?
         var cursorPushed = false
+        /// The pointer left the window: the pane would become a window of
+        /// its own if dropped now (see `beginPaneTearOff`).
+        var tearingOff = false
     }
 
     private var paneDrag: PaneDrag?
@@ -102,7 +109,12 @@ class GridViewController: NSViewController, TerminalHosting {
         // above.
         guard !hasAddedInitialPane else { return }
         hasAddedInitialPane = true
-        addPane()
+        if let pane = initialPane {
+            initialPane = nil
+            adopt(pane, placement: .fill)
+        } else {
+            addPane()
+        }
     }
 
     override func viewDidLayout() {
@@ -260,6 +272,12 @@ class GridViewController: NSViewController, TerminalHosting {
 
         let landing = frames[first..<panes.count].reduce(NSRect.null) { $0.union($1) }
         return view.convert(landing, to: nil)
+    }
+
+    /// Takes in a single pane torn off another grid (see `adopt`).
+    @discardableResult
+    func adopt(_ pane: TerminalViewController, placement: GridLayout.MergePlacement) -> NSRect {
+        adopt([pane], columnCounts: [1], focusedOffset: 0, placement: placement)
     }
 
     /// Marks this grid as the drop target of a merge drag carrying another
@@ -509,10 +527,11 @@ class GridViewController: NSViewController, TerminalHosting {
         let single = panes.count == 1
         for (idx, pane) in panes.enumerated() {
             let radius: CGFloat = single ? 28 : 16
+            let insets = single ? Self.singlePaneInsets : Self.gridPaneInsets
             pane.controller.cornerRadius = radius
-            pane.controller.topInset = single ? 50 : 30
-            pane.controller.sideInset = single ? 10 : 8
-            pane.controller.bottomInset = single ? 10 : 8
+            pane.controller.topInset = insets.top
+            pane.controller.sideInset = insets.side
+            pane.controller.bottomInset = insets.bottom
             pane.controller.forwardsTitleToWindow = idx == focusedIndex
 
             // `cell` itself clips `controller.view` while the cell animates
@@ -525,6 +544,9 @@ class GridViewController: NSViewController, TerminalHosting {
             pane.cellBackdrop.apply(settings.blurMaterial)
         }
     }
+
+    private static let singlePaneInsets = (top: CGFloat(50), side: CGFloat(10), bottom: CGFloat(10))
+    private static let gridPaneInsets = (top: CGFloat(30), side: CGFloat(8), bottom: CGFloat(8))
 
     // MARK: - Dragging panes
 
@@ -587,7 +609,7 @@ class GridViewController: NSViewController, TerminalHosting {
     /// it the swap partner: it springs into the lifted pane's old slot and
     /// the rest of the grid springs around to match.
     func updatePaneDrag(at windowPoint: NSPoint) {
-        guard let drag = paneDrag else { return }
+        guard let drag = paneDrag, !drag.tearingOff else { return }
         let point = view.convert(windowPoint, from: nil)
         springs.animate(
             drag.cell,
@@ -620,6 +642,13 @@ class GridViewController: NSViewController, TerminalHosting {
         paneDrag = nil
         if drag.cursorPushed { NSCursor.pop() }
         slotPreview.hide(animated: true)
+        if drag.tearingOff {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.18
+                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                drag.cell.animator().alphaValue = 1
+            }
+        }
 
         if !cancelled, let other = drag.swapWith {
             columns = GridLayout.swapping(drag.index, other, in: columns)
@@ -648,6 +677,103 @@ class GridViewController: NSViewController, TerminalHosting {
             liftShadow.animator().alphaValue = 0
         }
         focusFocusedPane()
+    }
+
+    // MARK: - Tearing panes off
+
+    /// The lifted pane was pulled out of the window: it fades from the grid
+    /// (the caller shows it floating under the pointer instead, from the
+    /// returned snapshot) and the other panes spring together to close its
+    /// gap, previewing the grid without it. Returns nil if no pane is lifted.
+    func beginPaneTearOff() -> (image: NSImage?, size: NSSize, grabOffset: NSSize)? {
+        guard var drag = paneDrag else { return nil }
+        if !drag.tearingOff {
+            drag.tearingOff = true
+            drag.swapWith = nil
+            paneDrag = drag
+            slotPreview.hide(animated: true)
+            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.15
+                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                drag.cell.animator().alphaValue = 0
+                liftShadow.animator().alphaValue = 0
+            }
+            let frames = framesWithoutPane(drag.index)
+            for (idx, pane) in panes.enumerated() where idx != drag.index {
+                springs.animate(pane.cell, to: frames[idx], apply: springApply(for: pane))
+            }
+        }
+        let snapshot = panes[drag.index].controller.view.snapshotImage()
+        return (snapshot, drag.size, drag.grabOffset)
+    }
+
+    /// The torn-off pane came back over the window: it reappears under the
+    /// pointer and the grid previews the drop as usual again.
+    func endPaneTearOff() {
+        guard var drag = paneDrag, drag.tearingOff else { return }
+        drag.tearingOff = false
+        paneDrag = drag
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.15
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            drag.cell.animator().alphaValue = 1
+            liftShadow.animator().alphaValue = 1
+        }
+        updateDragPreview()
+    }
+
+    /// Dropped outside the window: takes the torn-off pane out of the grid,
+    /// live shell included, and lets the rest settle into their new slots.
+    /// Its view stays where it is until the caller moves it into the grid
+    /// that adopts it (see `adopt`). Returns nil if no pane was torn off.
+    func takeTornOffPane() -> TerminalViewController? {
+        guard let drag = paneDrag, drag.tearingOff else { return nil }
+        paneDrag = nil
+        if drag.cursorPushed { NSCursor.pop() }
+        slotPreview.hide(animated: false)
+        liftShadow.isHidden = true
+        shadowedCell = nil
+
+        let pane = panes[drag.index]
+        panes.remove(at: drag.index)
+        columns = GridLayout.removing(drag.index, from: columns)
+        focusedIndex = min(drag.index, panes.count - 1)
+        applyChrome()
+
+        pane.controller.onProcessExit = nil
+        pane.controller.removeFromParent()
+        pane.cell.layer?.zPosition = 0
+        // Emptied once the adopting grid moves the terminal out; removed
+        // later for the same reason `closePane` defers its removal.
+        let cell = pane.cell
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            cell.removeFromSuperview()
+        }
+
+        let frames = targetFrames()
+        for (idx, other) in panes.enumerated() {
+            setTerminalSize(of: other, to: frames[idx].size)
+            springs.animate(other.cell, to: frames[idx], spring: .settle, apply: springApply(for: other))
+        }
+        NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)
+        return pane.controller
+    }
+
+    /// Slots for the grid as it would be without pane `removed`, indexed
+    /// like the current pane list (the removed pane's own entry is unused).
+    private func framesWithoutPane(_ removed: Int) -> [NSRect] {
+        let remaining = panes.count - 1
+        let layout = GridLayout.compute(
+            columns: GridLayout.removing(removed, from: columns),
+            focusedIndex: min(removed, remaining - 1),
+            bounds: view.bounds, spacing: remaining > 1 ? spacing : 0, focusWeight: focusWeight
+        )
+        return panes.indices.map { idx in
+            if idx == removed { return .zero }
+            let frame = layout.frames[idx > removed ? idx - 1 : idx]
+            return view.backingAlignedRect(frame, options: .alignAllEdgesNearest)
+        }
     }
 
     private func paneIndex(at point: NSPoint) -> Int? {

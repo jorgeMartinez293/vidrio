@@ -23,6 +23,7 @@ Every window is a grid of live terminal sessions.
 
 - **Swap panes:** hold `⌘` and drag a pane by its top strip. It lifts out of the grid and trades places with the one you drop it on, with a live preview of the landing slot.
 - **Merge windows:** hold `⌘` and drag a whole window onto another one. The target's panes spring aside to make room, and every session, live shells included, moves into the target window.
+- **Move panes between windows:** hold `⌘` and drag a pane out of its window. The other panes close the gap. Drop it on another window and that window makes room for it, just like a window merge; drop it anywhere else and it opens in a window of its own. Its live shell comes along either way.
 
 ### Keyboard shortcuts
 
@@ -34,6 +35,8 @@ Every window is a grid of live terminal sessions.
 | `⌘W` | Close the focused pane (closes the window when it is the last one) |
 | `⌘-drag` a pane | Swap it with another pane |
 | `⌘-drag` a window | Merge it into another window |
+| `⌘-drag` a pane onto another window | Move it into that window |
+| `⌘-drag` a pane outside any window | Open it in a new window |
 | `⌘,` | Settings |
 
 ## Look and feel

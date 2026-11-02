@@ -49,7 +49,9 @@ final class WindowMergeSession {
     }
 
     func update(at mouse: NSPoint, commandHeld: Bool) {
-        let newTarget = commandHeld ? dropTarget(at: mouse) : nil
+        let newTarget = commandHeld
+            ? Self.dropTarget(at: mouse, among: candidates(), excluding: source)
+            : nil
         let newPlacement = newTarget.map { Self.placement(at: mouse, over: $0.window.frame) } ?? .fill
         let targetChanged = newTarget?.window !== target?.window
         guard targetChanged || newPlacement != placement else { return }
@@ -72,7 +74,7 @@ final class WindowMergeSession {
 
     /// Left third of the target window: beside it on the left; right third:
     /// on the right; anywhere in between: fill its short columns.
-    private static func placement(at mouse: NSPoint, over frame: NSRect) -> GridLayout.MergePlacement {
+    static func placement(at mouse: NSPoint, over frame: NSRect) -> GridLayout.MergePlacement {
         let fraction = (mouse.x - frame.minX) / max(frame.width, 1)
         if fraction < 1.0 / 3.0 { return .left }
         if fraction > 2.0 / 3.0 { return .right }
@@ -107,7 +109,7 @@ final class WindowMergeSession {
     // MARK: - Merge
 
     private func merge(into target: (window: NSWindow, grid: GridViewController)) {
-        let snapshot = Self.snapshot(of: source)
+        let snapshot = source.contentView?.snapshotImage()
         let sourceFrame = source.frame
         let sourceAlpha = source.alphaValue
         let title = source.title
@@ -143,8 +145,12 @@ final class WindowMergeSession {
 
     // MARK: - Helpers
 
-    private func dropTarget(at mouse: NSPoint) -> (window: NSWindow, grid: GridViewController)? {
-        for window in candidates() where window !== source {
+    /// The frontmost grid window under `mouse` among `candidates` (front to
+    /// back), other than `source`.
+    static func dropTarget(
+        at mouse: NSPoint, among candidates: [NSWindow], excluding source: NSWindow
+    ) -> (window: NSWindow, grid: GridViewController)? {
+        for window in candidates where window !== source {
             guard window.isVisible, !window.isMiniaturized,
                   window.frame.contains(mouse),
                   let grid = window.contentViewController as? GridViewController,
@@ -167,14 +173,16 @@ final class WindowMergeSession {
         cursorPushed = false
         NSCursor.pop()
     }
+}
 
-    /// What the window's content currently draws. Blur backdrops render
-    /// empty here, which is fine: the ghost brings its own blur.
-    private static func snapshot(of window: NSWindow) -> NSImage? {
-        guard let view = window.contentView, view.bounds.width > 0, view.bounds.height > 0,
-              let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return nil }
-        view.cacheDisplay(in: view.bounds, to: rep)
-        let image = NSImage(size: view.bounds.size)
+extension NSView {
+    /// What the view currently draws. Blur backdrops render empty here,
+    /// which is fine: `MergeGhostWindow` brings its own blur.
+    func snapshotImage() -> NSImage? {
+        guard bounds.width > 0, bounds.height > 0,
+              let rep = bitmapImageRepForCachingDisplay(in: bounds) else { return nil }
+        cacheDisplay(in: bounds, to: rep)
+        let image = NSImage(size: bounds.size)
         image.addRepresentation(rep)
         return image
     }
@@ -182,9 +190,10 @@ final class WindowMergeSession {
 
 /// Borderless, click-through stand-in for a window being merged: a
 /// frosted card showing the window's last frame, which the merge animation
-/// shrinks into the slots its panes now occupy while fading it out.
-private final class MergeGhostWindow: NSWindow {
-    init(image: NSImage, frame: NSRect) {
+/// shrinks into the slots its panes now occupy while fading it out. Also
+/// what a pane torn off a grid floats as while it's dragged outside.
+final class MergeGhostWindow: NSWindow {
+    init(image: NSImage?, frame: NSRect) {
         super.init(contentRect: frame, styleMask: .borderless, backing: .buffered, defer: false)
         isReleasedWhenClosed = false
         isOpaque = false
