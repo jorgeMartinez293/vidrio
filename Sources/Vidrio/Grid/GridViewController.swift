@@ -238,11 +238,12 @@ class GridViewController: NSViewController, TerminalHosting {
         applyChrome()
 
         let frames = targetFrames()
+        let sizes = terminalSizes(for: frames)
         for idx in first..<panes.count {
             let pane = panes[idx]
             pane.cell.frame = frames[idx]
             pane.cellBackdrop.frame = NSRect(origin: .zero, size: frames[idx].size)
-            pane.controller.view.frame = NSRect(origin: .zero, size: frames[idx].size)
+            pane.controller.view.frame = NSRect(origin: .zero, size: sizes[idx])
             pane.cell.alphaValue = 0
             // `addSubview` moves the terminal out of the old window's
             // hierarchy without tearing anything down — the shell keeps
@@ -257,7 +258,7 @@ class GridViewController: NSViewController, TerminalHosting {
         // carry on from there and take their final terminal size now.
         for idx in 0..<first {
             let pane = panes[idx]
-            setTerminalSize(of: pane, to: frames[idx].size)
+            setTerminalSize(of: pane, to: sizes[idx])
             springs.animate(pane.cell, to: frames[idx], apply: springApply(for: pane))
         }
         NSAnimationContext.runAnimationGroup { context in
@@ -318,10 +319,11 @@ class GridViewController: NSViewController, TerminalHosting {
         isPreviewingMerge = false
         slotPreview.hide(animated: true)
         let frames = targetFrames()
+        let sizes = terminalSizes(for: frames)
         for (idx, pane) in panes.enumerated() {
             // Normally a no-op: terminals never left their size. Catches a
             // pane closing mid-hover, which skipped the regular relayout.
-            setTerminalSize(of: pane, to: frames[idx].size)
+            setTerminalSize(of: pane, to: sizes[idx])
             springs.animate(pane.cell, to: frames[idx], apply: springApply(for: pane))
         }
     }
@@ -452,13 +454,14 @@ class GridViewController: NSViewController, TerminalHosting {
         // only changes on the drop.
         guard paneDrag == nil, !isPreviewingMerge else { return }
         let frames = targetFrames()
+        let sizes = terminalSizes(for: frames)
         let applyFrames = {
             for (idx, pane) in self.panes.enumerated() {
                 let target = frames[idx]
                 if self.springs.isAnimating(pane.cell) {
                     // Still settling from a drop: steer the spring to the
                     // new slot instead of fighting it frame by frame.
-                    self.setTerminalSize(of: pane, to: target.size)
+                    self.setTerminalSize(of: pane, to: sizes[idx])
                     self.springs.animate(pane.cell, to: target, apply: self.springApply(for: pane))
                     continue
                 }
@@ -476,7 +479,7 @@ class GridViewController: NSViewController, TerminalHosting {
                 // SIGWINCHes it redraws for sizes that are already stale,
                 // leaving mangled lines behind. The cell's clip hides the
                 // difference while the cell itself animates.
-                let terminalFrame = NSRect(origin: .zero, size: target.size)
+                let terminalFrame = NSRect(origin: .zero, size: sizes[idx])
                 if pane.controller.view.frame != terminalFrame {
                     pane.controller.view.frame = terminalFrame
                 }
@@ -497,14 +500,14 @@ class GridViewController: NSViewController, TerminalHosting {
 
     /// Every pane's final slot for `columns` (the grid's own by default)
     /// and the current focus.
-    private func targetFrames(columns: [[Int]]? = nil) -> [NSRect] {
+    private func targetFrames(columns: [[Int]]? = nil, focusedIndex: Int? = nil) -> [NSRect] {
         // No spacing to reserve with nothing to space between — a single
         // pane fills the window edge-to-edge exactly like the original
         // single-window look, instead of sitting inset with a visible gap
         // that throws off how its 28pt corner radius reads.
         let layout = GridLayout.compute(
-            columns: columns ?? self.columns, focusedIndex: focusedIndex, bounds: view.bounds,
-            spacing: panes.count > 1 ? spacing : 0, focusWeight: focusWeight
+            columns: columns ?? self.columns, focusedIndex: focusedIndex ?? self.focusedIndex,
+            bounds: view.bounds, spacing: panes.count > 1 ? spacing : 0, focusWeight: focusWeight
         )
         // Weighted slots land on fractional points; snapping them to
         // whole device pixels keeps every terminal row (and each row
@@ -512,6 +515,23 @@ class GridViewController: NSViewController, TerminalHosting {
         // instead of blurred or seamed.
         return layout.frames.map {
             view.backingAlignedRect($0, options: .alignAllEdgesNearest)
+        }
+    }
+
+    /// The terminal size for each pane in `frames` (the grid's slots for
+    /// the current focus). Every pane keeps the width its slot has while
+    /// it is focused, even when it isn't: otherwise each focus move would
+    /// change the column count of every terminal, and programs that wrap
+    /// their own text (Claude Code, for one) would leave everything above
+    /// the screen wrapped at the old width. A narrower unfocused cell just
+    /// clips the terminal's right side. The height follows the slot, so
+    /// the bottom of the terminal, where the prompt lives, stays visible.
+    private func terminalSizes(for frames: [NSRect]) -> [NSSize] {
+        frames.indices.map { idx in
+            let focusedWidth = idx == focusedIndex
+                ? frames[idx].width
+                : targetFrames(focusedIndex: idx)[idx].width
+            return NSSize(width: max(frames[idx].width, focusedWidth), height: frames[idx].height)
         }
     }
 
@@ -656,8 +676,9 @@ class GridViewController: NSViewController, TerminalHosting {
         }
 
         let frames = targetFrames()
+        let sizes = terminalSizes(for: frames)
         for (idx, pane) in panes.enumerated() {
-            setTerminalSize(of: pane, to: frames[idx].size)
+            setTerminalSize(of: pane, to: sizes[idx])
             let cell = pane.cell
             springs.animate(
                 cell, to: frames[idx], spring: idx == drag.index ? .drop : .settle,
@@ -752,8 +773,9 @@ class GridViewController: NSViewController, TerminalHosting {
         }
 
         let frames = targetFrames()
+        let sizes = terminalSizes(for: frames)
         for (idx, other) in panes.enumerated() {
-            setTerminalSize(of: other, to: frames[idx].size)
+            setTerminalSize(of: other, to: sizes[idx])
             springs.animate(other.cell, to: frames[idx], spring: .settle, apply: springApply(for: other))
         }
         NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)
