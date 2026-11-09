@@ -10,12 +10,13 @@ class TransparentWindow: NSWindow {
     /// for any responder.
     var onFirstResponderChange: ((NSResponder?) -> Void)?
 
-    /// Starts a merge drag when the user ⌘-drags this window by its top
-    /// strip. Set by the app delegate for windows that can be merged; nil
-    /// (or a nil session) leaves ⌘-drags alone.
+    /// Starts a merge drag when the user drags this window by its top
+    /// strip holding the rearrange key (⌘ by default). Set by the app
+    /// delegate for windows that can be merged; nil (or a nil session)
+    /// leaves those drags alone.
     var makeMergeSession: ((TransparentWindow) -> WindowMergeSession?)?
 
-    /// Starts tearing off the pane being ⌘-dragged in `grid` once the
+    /// Starts tearing off the pane being dragged in `grid` once the
     /// pointer (at the given screen point) leaves this window. Set by the
     /// app delegate; nil (or a nil session) keeps panes inside the window.
     var makePaneTearOff: ((TransparentWindow, GridViewController, NSPoint) -> PaneTearOffSession?)?
@@ -142,15 +143,19 @@ class TransparentWindow: NSWindow {
     /// Intercepted here rather than in `mouseDown` so the drag is ours before
     /// the titlebar starts AppKit's own window move.
     override func sendEvent(_ event: NSEvent) {
+        let settings = SettingsStore.shared.current
         if event.type == .leftMouseDown, isMergeDragHandle(event) {
-            if event.modifierFlags.contains(.command), let session = makeMergeSession?(self) {
+            if settings.rearrangeModifier.isHeld(in: event.modifierFlags),
+               let session = makeMergeSession?(self) {
                 runMergeDrag(from: event, session: session)
                 return
             }
             // Might become a native window move; start watching now in
             // case `willMoveNotification` comes late or not at all.
             startNativeMoveWatch()
-        } else if event.type == .leftMouseDown, event.modifierFlags.contains(.command),
+        } else if event.type == .leftMouseDown,
+                  settings.rearrangeModifier.isHeld(in: event.modifierFlags)
+                    || settings.swapModifier.isHeld(in: event.modifierFlags),
                   let grid = contentViewController as? GridViewController,
                   grid.canDragPane(at: event.locationInWindow) {
             runPaneDrag(from: event, grid: grid)
@@ -159,12 +164,14 @@ class TransparentWindow: NSWindow {
         super.sendEvent(event)
     }
 
-    // MARK: - ⌘-drag to rearrange panes
+    // MARK: - Dragging panes
 
-    /// Lifts the pane under a ⌘-press once the pointer really moves, and
-    /// lets the grid move it around until release. Pulled outside the
+    /// Lifts the pane under a press with the rearrange or swap key held
+    /// (⌘ and ⌥ by default) once the pointer really moves, and lets the
+    /// grid move it around until release. Which of the two keys is held
+    /// picks, live, whether the drop rearranges the grid or swaps panes. Pulled outside the
     /// window, the pane is torn off (see `PaneTearOffSession`): dropped
-    /// there it moves into another window or one of its own. A ⌘-click
+    /// there it moves into another window or one of its own. A click
     /// that never moves is handed to the terminal untouched (it opens
     /// links). Escape puts the pane back.
     private func runPaneDrag(from mouseDown: NSEvent, grid: GridViewController) {
@@ -172,15 +179,21 @@ class TransparentWindow: NSWindow {
         var dragging = false
         var cancelled = false
         var tearOff: PaneTearOffSession?
+        var lastPoint = start
 
         while true {
             guard let next = nextEvent(
                 matching: [.leftMouseDragged, .leftMouseUp, .flagsChanged, .keyDown],
                 until: .distantFuture, inMode: .eventTracking, dequeue: true
             ) else { continue }
-            let point = next.locationInWindow
             let mouse = NSEvent.mouseLocation
-            let commandHeld = next.modifierFlags.contains(.command)
+            // Key events carry no pointer location.
+            let point = next.type == .flagsChanged || next.type == .keyDown
+                ? lastPoint : next.locationInWindow
+            lastPoint = point
+            let settings = SettingsStore.shared.current
+            let swapping = settings.swapModifier.isHeld(in: next.modifierFlags)
+            let modifierHeld = swapping || settings.rearrangeModifier.isHeld(in: next.modifierFlags)
 
             switch next.type {
             case .keyDown:
@@ -191,11 +204,16 @@ class TransparentWindow: NSWindow {
                 tearOff = nil
                 if dragging { grid.endPaneDrag(cancelled: true) }
             case .flagsChanged:
-                // ⌘ picks whether another window takes the drop.
-                tearOff?.update(at: mouse, commandHeld: commandHeld)
+                // The drag keys pick whether another window takes the
+                // drop, and within the grid whether it swaps.
+                if let tearOff {
+                    tearOff.update(at: mouse, modifierHeld: modifierHeld)
+                } else if dragging, !cancelled {
+                    grid.updatePaneDrag(at: point, swapping: swapping)
+                }
             case .leftMouseUp:
                 if let tearOff {
-                    tearOff.finish(at: mouse, commandHeld: commandHeld)
+                    tearOff.finish(at: mouse, modifierHeld: modifierHeld)
                     // Safety net: a no-op unless the tear-off couldn't run.
                     grid.endPaneDrag(cancelled: true)
                 } else if dragging {
@@ -227,9 +245,9 @@ class TransparentWindow: NSWindow {
                     grid.endPaneTearOff()
                 }
                 if let tearOff {
-                    tearOff.update(at: mouse, commandHeld: commandHeld)
+                    tearOff.update(at: mouse, modifierHeld: modifierHeld)
                 } else {
-                    grid.updatePaneDrag(at: point)
+                    grid.updatePaneDrag(at: point, swapping: swapping)
                 }
             }
         }
@@ -249,7 +267,8 @@ class TransparentWindow: NSWindow {
     }
 
     /// Moves the window with the pointer, by hand, so the merge session can
-    /// follow the pointer (and ⌘) on every step. Releasing ⌘ mid-drag turns
+    /// follow the pointer (and the rearrange key) on every step. Releasing
+    /// the key mid-drag turns
     /// it back into a plain move; Escape puts the window back.
     private func runMergeDrag(from event: NSEvent, session: WindowMergeSession) {
         let startMouse = NSEvent.mouseLocation
@@ -264,7 +283,7 @@ class TransparentWindow: NSWindow {
                 until: .distantFuture, inMode: .eventTracking, dequeue: true
             ) else { continue }
             let mouse = NSEvent.mouseLocation
-            let commandHeld = next.modifierFlags.contains(.command)
+            let modifierHeld = SettingsStore.shared.current.rearrangeModifier.isHeld(in: next.modifierFlags)
 
             switch next.type {
             case .keyDown:
@@ -272,7 +291,7 @@ class TransparentWindow: NSWindow {
                 if started { session.cancel(restoringOrigin: startOrigin) }
                 return
             case .leftMouseUp:
-                if started { session.finish(at: mouse, commandHeld: commandHeld) }
+                if started { session.finish(at: mouse, modifierHeld: modifierHeld) }
                 return
             default:
                 if !started {
@@ -284,7 +303,7 @@ class TransparentWindow: NSWindow {
                     x: startOrigin.x + mouse.x - startMouse.x,
                     y: startOrigin.y + mouse.y - startMouse.y
                 ))
-                session.update(at: mouse, commandHeld: commandHeld)
+                session.update(at: mouse, modifierHeld: modifierHeld)
             }
         }
     }
@@ -292,7 +311,7 @@ class TransparentWindow: NSWindow {
     /// Set while `runMergeDrag` moves the window itself, so its own
     /// `setFrameOrigin` calls aren't mistaken for a native move.
     private var isRunningMergeDrag = false
-    /// Polls pointer, button and ⌘ during a native window move: AppKit
+    /// Polls pointer, button and the rearrange key during a native window move: AppKit
     /// delivers no events to the app while it drags the window.
     private var nativeMoveTimer: Timer?
     private var nativeMoveSession: WindowMergeSession?
@@ -322,20 +341,20 @@ class TransparentWindow: NSWindow {
 
     private func nativeMoveTick() {
         let mouse = NSEvent.mouseLocation
-        let commandHeld = NSEvent.modifierFlags.contains(.command)
+        let modifierHeld = SettingsStore.shared.current.rearrangeModifier.isHeld(in: NSEvent.modifierFlags)
         let buttonDown = NSEvent.pressedMouseButtons & 1 != 0
         if frame.origin != nativeMoveStartOrigin { nativeMoveConfirmed = true }
 
         guard buttonDown else {
-            nativeMoveSession?.finish(at: mouse, commandHeld: commandHeld)
+            nativeMoveSession?.finish(at: mouse, modifierHeld: modifierHeld)
             stopNativeMoveWatch()
             return
         }
-        if nativeMoveSession == nil, commandHeld, nativeMoveConfirmed, !isRunningMergeDrag {
+        if nativeMoveSession == nil, modifierHeld, nativeMoveConfirmed, !isRunningMergeDrag {
             nativeMoveSession = makeMergeSession?(self)
             nativeMoveSession?.begin()
         }
-        nativeMoveSession?.update(at: mouse, commandHeld: commandHeld)
+        nativeMoveSession?.update(at: mouse, modifierHeld: modifierHeld)
     }
 
     private func stopNativeMoveWatch() {

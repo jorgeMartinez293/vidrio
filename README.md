@@ -21,9 +21,10 @@ Every window is a grid of live terminal sessions.
 
 ### Rearranging
 
-- **Swap panes:** hold `⌘` and drag a pane by its top strip. It lifts out of the grid and trades places with the one you drop it on, with a live preview of the landing slot.
+- **Rearrange panes:** hold `⌘` and drag a pane. It lifts out of the grid, with a live preview of the landing slot. Over the left or right side of a column (at any height) it opens a new column there; anywhere else in a column it goes in as a row, above the pane under the pointer if you're over its upper half and below it if over its lower half.
+- **Swap panes:** hold `⌥` and drag a pane to trade places with the one you drop it on. You can switch between `⌘` and `⌥` mid-drag, and pick other keys for both in Settings.
 - **Merge windows:** hold `⌘` and drag a whole window onto another one. The target's panes spring aside to make room, and every session, live shells included, moves into the target window.
-- **Move panes between windows:** hold `⌘` and drag a pane out of its window. The other panes close the gap. Drop it on another window and that window makes room for it, just like a window merge; drop it anywhere else and it opens in a window of its own. Its live shell comes along either way.
+- **Move panes between windows:** hold `⌘` and drag a pane out of its window. The other panes close the gap. Drop it on another window and it lands in a new row or column there, picked the same way as when rearranging; drop it anywhere else and it opens in a window of its own. Its live shell comes along either way.
 
 ### Keyboard shortcuts
 
@@ -33,7 +34,8 @@ Every window is a grid of live terminal sessions.
 | `⌘⇧N` | New pane in the current grid |
 | `⌘←` `⌘→` `⌘↑` `⌘↓` | Move focus between panes |
 | `⌘W` | Close the focused pane (closes the window when it is the last one) |
-| `⌘-drag` a pane | Swap it with another pane |
+| `⌘-drag` a pane | Move it to a new row or column |
+| `⌥-drag` a pane | Swap it with another pane |
 | `⌘-drag` a window | Merge it into another window |
 | `⌘-drag` a pane onto another window | Move it into that window |
 | `⌘-drag` a pane outside any window | Open it in a new window |

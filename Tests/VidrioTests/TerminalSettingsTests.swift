@@ -119,4 +119,18 @@ struct TerminalSettingsTests {
         #expect(c.cols == 20)
         #expect(abs(c.opacity - 0) < 0.001)
     }
+
+    @Test func testDragModifiersDefaultAndStayDistinct() throws {
+        // Settings saved before the drag keys existed get ⌘ and ⌥.
+        let old = try JSONDecoder().decode(TerminalSettings.self, from: Data(#"{"cols": 80}"#.utf8))
+        #expect(old.rearrangeModifier == .command)
+        #expect(old.swapModifier == .option)
+        // The same key for both is never kept.
+        let same = try JSONDecoder().decode(
+            TerminalSettings.self,
+            from: Data(#"{"rearrangeModifier": "option", "swapModifier": "option"}"#.utf8)
+        )
+        #expect(same.rearrangeModifier == .option)
+        #expect(same.swapModifier == .command)
+    }
 }

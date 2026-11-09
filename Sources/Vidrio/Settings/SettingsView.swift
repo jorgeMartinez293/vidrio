@@ -68,12 +68,29 @@ struct SettingsView: View {
             }
 
             Section {
+                Picker("Reorganizar paneles", selection: viewModel.rearrangeModifier) {
+                    ForEach(DragModifier.allCases, id: \.self) { modifier in
+                        Text(modifier.displayName).tag(modifier)
+                    }
+                }
+                Picker("Intercambiar paneles", selection: viewModel.swapModifier) {
+                    ForEach(DragModifier.allCases, id: \.self) { modifier in
+                        Text(modifier.displayName).tag(modifier)
+                    }
+                }
+            } header: {
+                Text("Arrastrar paneles")
+            } footer: {
+                Text("Mantén la tecla y arrastra un panel. La tecla de reorganizar también fusiona ventanas al arrastrarlas por la barra superior.")
+            }
+
+            Section {
                 Button("Restaurar valores por defecto") {
                     viewModel.reset()
                 }
             }
         }
         .formStyle(.grouped)
-        .frame(width: 420, height: 680)
+        .frame(width: 420, height: 800)
     }
 }

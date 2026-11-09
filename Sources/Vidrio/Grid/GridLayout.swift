@@ -74,6 +74,9 @@ enum GridLayout {
         case left
         /// The other grid's columns, as they were, right of this grid's.
         case right
+        /// Where the pointer dropped them (see `dropTarget`): its columns
+        /// at that column boundary, or all its panes in order at that row.
+        case at(DropTarget)
     }
 
     /// `columns` with another grid's panes merged in. The incoming panes
@@ -96,6 +99,15 @@ enum GridLayout {
         case .fill: return appending(first..<next, to: columns)
         case .left: return incoming + columns
         case .right: return columns + incoming
+        case .at(.newColumn(let boundary)):
+            let boundary = min(max(boundary, 0), columns.count)
+            return Array(columns[..<boundary]) + incoming + Array(columns[boundary...])
+        case .at(.row(let column, let row)):
+            guard columns.indices.contains(column) else { return columns + incoming }
+            var result = columns
+            let row = min(max(row, 0), result[column].count)
+            result[column].insert(contentsOf: first..<next, at: row)
+            return result
         }
     }
 
@@ -117,6 +129,86 @@ enum GridLayout {
         columns.map { column in
             column.map { $0 == a ? b : $0 == b ? a : $0 }
         }
+    }
+
+    // MARK: - Dropping
+
+    /// Where a pane dropped into a grid goes, counted in the grid's columns
+    /// as they are while it's dragged (the dragged pane, if it came from
+    /// this grid, still in its own place).
+    enum DropTarget: Equatable {
+        /// A new column of its own at this column boundary: 0 is left of
+        /// the leftmost column, `columns.count` right of the rightmost.
+        case newColumn(at: Int)
+        /// A row in `column`, inserted at position `at` (0 = top) among
+        /// that column's panes.
+        case row(column: Int, at: Int)
+    }
+
+    /// Share of a column's width, on each side, where a drop opens a new
+    /// column beside it, and the most that share may span.
+    static let columnBandFraction: CGFloat = 0.25
+    static let maxColumnBand: CGFloat = 180
+
+    /// Where a pane dragged over a grid laid out as `layout` lands with the
+    /// pointer at `point`. Decided in two steps, mirroring the grid's own
+    /// shape: first the column under the pointer (the nearest one when it
+    /// sits in a gap), whose left and right bands, running its full
+    /// height, open a new column on that side; anywhere else in the column,
+    /// the pane under the pointer (or nearest) takes the dropped pane above
+    /// it when the pointer is in its upper half and below it otherwise.
+    ///
+    /// `moving` is the dragged pane when it comes from this grid: hovering
+    /// the middle of its own slot returns nil, meaning it stays put. The
+    /// result is the raw zone under the pointer; `placing` may still turn
+    /// it into the grid as it already was.
+    static func dropTarget(at point: CGPoint, in layout: Result, moving: Int? = nil) -> DropTarget? {
+        let columns = layout.indexAt
+        guard !columns.isEmpty else { return .newColumn(at: 0) }
+
+        func distance(_ value: CGFloat, _ low: CGFloat, _ high: CGFloat) -> CGFloat {
+            value < low ? low - value : value > high ? value - high : 0
+        }
+        // Panes in a column all share its width, so its first pane's
+        // horizontal extent is the column's.
+        let spans = columns.map { (layout.frames[$0[0]].minX, layout.frames[$0[0]].maxX) }
+        let column = spans.indices.min { a, b in
+            distance(point.x, spans[a].0, spans[a].1) < distance(point.x, spans[b].0, spans[b].1)
+        }!
+        let (minX, maxX) = spans[column]
+        let band = min((maxX - minX) * columnBandFraction, maxColumnBand)
+        if point.x < minX + band { return .newColumn(at: column) }
+        if point.x > maxX - band { return .newColumn(at: column + 1) }
+
+        let rows = columns[column]
+        let row = rows.indices.min { a, b in
+            let fa = layout.frames[rows[a]], fb = layout.frames[rows[b]]
+            return distance(point.y, fa.minY, fa.maxY) < distance(point.y, fb.minY, fb.maxY)
+        }!
+        if rows[row] == moving { return nil }
+        // AppKit coordinates: larger y is higher up.
+        return .row(column: column, at: point.y >= layout.frames[rows[row]].midY ? row : row + 1)
+    }
+
+    /// `columns` with pane `index` put at `target` (counted in `columns`
+    /// as given). A pane already in the grid is lifted out of its old
+    /// place first, and a column it leaves empty disappears; any other
+    /// index is added as a new pane. Pane indices don't change.
+    static func placing(_ index: Int, at target: DropTarget, in columns: [[Int]]) -> [[Int]] {
+        // Insert a placeholder first so `target`'s positions still refer to
+        // `columns` as given, then take the pane out of its old place.
+        let placeholder = -1
+        var result = columns
+        switch target {
+        case .newColumn(let boundary):
+            result.insert([placeholder], at: min(max(boundary, 0), result.count))
+        case .row(let column, let row):
+            guard result.indices.contains(column) else { return columns }
+            result[column].insert(placeholder, at: min(max(row, 0), result[column].count))
+        }
+        return result
+            .map { $0.filter { $0 != index }.map { $0 == placeholder ? index : $0 } }
+            .filter { !$0.isEmpty }
     }
 
     /// The columns panes `0..<count` end up in when added one at a time.

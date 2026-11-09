@@ -16,8 +16,10 @@ extension TerminalViewController: TerminalHosting {}
 /// sized to the pane count, new panes open without moving existing ones, and
 /// the focused pane's column and cell are enlarged. `⌘⇧N` adds a pane, `⌘`+arrow moves focus between panes, and `⌘W` closes the focused
 /// pane (or the window itself once only one pane is left). ⌘-dragging a
-/// pane lifts it out of the grid so it can trade places with another, or
-/// tear it off into a window of its own by dropping it outside.
+/// pane lifts it out of the grid so it can move to a new row or column,
+/// ⌥-dragging it so it can trade places with another (both keys can be
+/// changed in the settings); either way, dropping it outside tears it off
+/// into a window of its own.
 class GridViewController: NSViewController, TerminalHosting {
     private struct Pane {
         let controller: TerminalViewController
@@ -62,13 +64,26 @@ class GridViewController: NSViewController, TerminalHosting {
         /// The lifted cell's size: its terminal's, which doesn't change
         /// until the drop.
         let size: NSSize
-        /// The pane it would trade places with if dropped now; nil drops
-        /// it back where it came from.
-        var swapWith: Int?
+        /// Where it would land if dropped now; nil drops it back where it
+        /// came from.
+        var drop: Drop?
+        /// The rearranging zone the drag started in (see
+        /// `GridLayout.dropTarget`). Until the pointer first leaves it the
+        /// pane stays home, so grabbing a pane near its column's side
+        /// doesn't open a new column before it has even moved.
+        let startTarget: GridLayout.DropTarget?
+        var leftStartZone = false
         var cursorPushed = false
         /// The pointer left the window: the pane would become a window of
         /// its own if dropped now (see `beginPaneTearOff`).
         var tearingOff = false
+    }
+
+    /// Where a lifted pane lands: trading places with another pane (while
+    /// the swap key is held), or in a new row or column of the grid.
+    private enum Drop: Equatable {
+        case swap(Int)
+        case place(GridLayout.DropTarget)
     }
 
     private var paneDrag: PaneDrag?
@@ -279,6 +294,15 @@ class GridViewController: NSViewController, TerminalHosting {
     @discardableResult
     func adopt(_ pane: TerminalViewController, placement: GridLayout.MergePlacement) -> NSRect {
         adopt([pane], columnCounts: [1], focusedOffset: 0, placement: placement)
+    }
+
+    /// Where a single pane coming from another window (torn off it, or the
+    /// window's only pane) lands with the pointer at `screenPoint`: the same
+    /// rows and columns a pane dragged within this grid can go to.
+    func placementForIncomingPane(atScreenPoint screenPoint: NSPoint) -> GridLayout.MergePlacement {
+        guard let window = view.window else { return .fill }
+        let point = view.convert(window.convertPoint(fromScreen: screenPoint), from: nil)
+        return GridLayout.dropTarget(at: point, in: currentLayout()).map { .at($0) } ?? .fill
     }
 
     /// Marks this grid as the drop target of a merge drag carrying another
@@ -498,6 +522,14 @@ class GridViewController: NSViewController, TerminalHosting {
         }
     }
 
+    /// The grid's own layout, unsnapped: what drops are hit-tested against.
+    private func currentLayout() -> GridLayout.Result {
+        GridLayout.compute(
+            columns: columns, focusedIndex: focusedIndex,
+            bounds: view.bounds, spacing: panes.count > 1 ? spacing : 0, focusWeight: focusWeight
+        )
+    }
+
     /// Every pane's final slot for `columns` (the grid's own by default)
     /// and the current focus.
     private func targetFrames(columns: [[Int]]? = nil, focusedIndex: Int? = nil) -> [NSRect] {
@@ -590,7 +622,10 @@ class GridViewController: NSViewController, TerminalHosting {
             width: min(max(point.x - start.minX, 0), size.width),
             height: min(max(point.y - start.minY, 0), size.height)
         )
-        paneDrag = PaneDrag(index: idx, cell: pane.cell, grabOffset: grabOffset, size: size)
+        paneDrag = PaneDrag(
+            index: idx, cell: pane.cell, grabOffset: grabOffset, size: size,
+            startTarget: GridLayout.dropTarget(at: point, in: currentLayout(), moving: idx)
+        )
 
         NSCursor.closedHand.push()
         paneDrag?.cursorPushed = true
@@ -625,10 +660,13 @@ class GridViewController: NSViewController, TerminalHosting {
         return true
     }
 
-    /// Moves the lifted pane with the pointer. Hovering another pane makes
-    /// it the swap partner: it springs into the lifted pane's old slot and
-    /// the rest of the grid springs around to match.
-    func updatePaneDrag(at windowPoint: NSPoint) {
+    /// Moves the lifted pane with the pointer and picks where it would
+    /// land. Normally that's a new row or column, chosen by
+    /// `GridLayout.dropTarget`; with `swapping` (the swap key held), it's
+    /// the slot of the pane under the pointer, which springs into the
+    /// lifted pane's old slot instead. The rest of the grid springs around
+    /// to match.
+    func updatePaneDrag(at windowPoint: NSPoint, swapping: Bool) {
         guard let drag = paneDrag, !drag.tearingOff else { return }
         let point = view.convert(windowPoint, from: nil)
         springs.animate(
@@ -640,22 +678,47 @@ class GridViewController: NSViewController, TerminalHosting {
             spring: .follow, apply: springApply(for: panes[drag.index])
         )
 
-        // Hit-tested against the slots as currently previewed. Over the
-        // pane that was swapped into the lifted pane's old slot means "put
-        // it back"; over the landing slot or a gap keeps the current pick.
-        let frames = previewFrames(for: drag)
-        guard let hovered = frames.indices.first(where: {
-            $0 != drag.index && !panes[$0].isClosing && frames[$0].contains(point)
-        }) else { return }
-        let swapWith: Int? = hovered == drag.swapWith ? nil : hovered
-        guard swapWith != drag.swapWith else { return }
-        paneDrag?.swapWith = swapWith
+        // Hit-tested against the grid's own slots, not the previewed ones:
+        // the preview moves panes under the pointer, which would make the
+        // pick flip back and forth as they go.
+        let layout = currentLayout()
+        let newDrop: Drop?
+        if swapping {
+            let hovered = nearestPane(to: point, in: layout.frames)
+            newDrop = hovered.flatMap { $0 == drag.index ? nil : .swap($0) }
+        } else {
+            let target = GridLayout.dropTarget(at: point, in: layout, moving: drag.index)
+            if !drag.leftStartZone, target != drag.startTarget {
+                paneDrag?.leftStartZone = true
+            }
+            if let target, paneDrag?.leftStartZone == true,
+               GridLayout.placing(drag.index, at: target, in: columns) != columns {
+                newDrop = .place(target)
+            } else {
+                newDrop = nil
+            }
+        }
+        guard newDrop != drag.drop else { return }
+        paneDrag?.drop = newDrop
         NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
         updateDragPreview()
     }
 
-    /// Drops the lifted pane: into its landing slot (trading places with
-    /// the hovered pane), or straight back home if `cancelled`. Terminals
+    /// The pane (other than a closing one) whose frame holds `point`, or
+    /// the closest one when it sits in a gap.
+    private func nearestPane(to point: NSPoint, in frames: [NSRect]) -> Int? {
+        func distance(_ frame: NSRect) -> CGFloat {
+            hypot(max(frame.minX - point.x, 0, point.x - frame.maxX),
+                  max(frame.minY - point.y, 0, point.y - frame.maxY))
+        }
+        return frames.indices
+            .filter { !panes[$0].isClosing }
+            .min { distance(frames[$0]) < distance(frames[$1]) }
+    }
+
+    /// Drops the lifted pane: into its landing slot (in a new row or
+    /// column, or trading places with the hovered pane), or straight back
+    /// home if `cancelled`. Terminals
     /// take their final size once, here, and every cell springs into place.
     func endPaneDrag(cancelled: Bool) {
         guard let drag = paneDrag else { return }
@@ -670,8 +733,8 @@ class GridViewController: NSViewController, TerminalHosting {
             }
         }
 
-        if !cancelled, let other = drag.swapWith {
-            columns = GridLayout.swapping(drag.index, other, in: columns)
+        if !cancelled, let drop = drag.drop {
+            columns = columns(applying: drop, moving: drag.index)
             NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)
         }
 
@@ -710,7 +773,7 @@ class GridViewController: NSViewController, TerminalHosting {
         guard var drag = paneDrag else { return nil }
         if !drag.tearingOff {
             drag.tearingOff = true
-            drag.swapWith = nil
+            drag.drop = nil
             paneDrag = drag
             slotPreview.hide(animated: true)
             NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
@@ -808,8 +871,18 @@ class GridViewController: NSViewController, TerminalHosting {
 
     /// Slots for the grid as it would be after dropping `drag` now.
     private func previewFrames(for drag: PaneDrag) -> [NSRect] {
-        guard let other = drag.swapWith else { return targetFrames() }
-        return targetFrames(columns: GridLayout.swapping(drag.index, other, in: columns))
+        guard let drop = drag.drop else { return targetFrames() }
+        return targetFrames(columns: columns(applying: drop, moving: drag.index))
+    }
+
+    /// The grid's columns after pane `index` is dropped as `drop`.
+    private func columns(applying drop: Drop, moving index: Int) -> [[Int]] {
+        switch drop {
+        case .swap(let other):
+            return GridLayout.swapping(index, other, in: columns)
+        case .place(let target):
+            return GridLayout.placing(index, at: target, in: columns)
+        }
     }
 
     /// Springs every pane but the lifted one to its previewed slot and

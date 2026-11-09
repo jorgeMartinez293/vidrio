@@ -18,6 +18,13 @@ struct TerminalSettings: Codable, Equatable {
     /// Replaces the fixed grays (153 and 136) that Claude Code uses for its version/model/effort
     /// line, path and borders. `nil` keeps them as sent.
     var secondaryTextColor: RGBAColor?
+    /// Held while dragging a pane, rearranges the grid (new rows and
+    /// columns); held while dragging a window by its top strip, merges it
+    /// into another window.
+    var rearrangeModifier: DragModifier
+    /// Held while dragging a pane, swaps it with the pane it's dropped on.
+    /// Always differs from `rearrangeModifier`.
+    var swapModifier: DragModifier
 
     // Valid ranges.
     static let colsRange = 20...400
@@ -41,7 +48,9 @@ struct TerminalSettings: Codable, Equatable {
         textColor: .white,
         cursorColor: .white,
         dimFactor: 0.5,
-        secondaryTextColor: nil
+        secondaryTextColor: nil,
+        rearrangeModifier: .command,
+        swapModifier: .option
     )
 
     init(
@@ -50,7 +59,9 @@ struct TerminalSettings: Codable, Equatable {
         fontName: String, fontSize: Double,
         textColor: RGBAColor, cursorColor: RGBAColor,
         dimFactor: Double = TerminalSettings.defaults.dimFactor,
-        secondaryTextColor: RGBAColor? = nil
+        secondaryTextColor: RGBAColor? = nil,
+        rearrangeModifier: DragModifier = .command,
+        swapModifier: DragModifier = .option
     ) {
         self.cols = cols
         self.rows = rows
@@ -64,6 +75,8 @@ struct TerminalSettings: Codable, Equatable {
         self.cursorColor = cursorColor
         self.dimFactor = dimFactor
         self.secondaryTextColor = secondaryTextColor
+        self.rearrangeModifier = rearrangeModifier
+        self.swapModifier = swapModifier
     }
 
     /// Decodes missing fields to their default value (via `decodeIfPresent`) so
@@ -84,10 +97,13 @@ struct TerminalSettings: Codable, Equatable {
         self.cursorColor = try c.decodeIfPresent(RGBAColor.self, forKey: .cursorColor) ?? d.cursorColor
         self.dimFactor = try c.decodeIfPresent(Double.self, forKey: .dimFactor) ?? d.dimFactor
         self.secondaryTextColor = try c.decodeIfPresent(RGBAColor.self, forKey: .secondaryTextColor)
+        self.rearrangeModifier = try c.decodeIfPresent(DragModifier.self, forKey: .rearrangeModifier) ?? d.rearrangeModifier
+        self.swapModifier = try c.decodeIfPresent(DragModifier.self, forKey: .swapModifier) ?? d.swapModifier
         self = self.clamped()
     }
 
-    /// Returns a copy with every numeric field forced into its valid range.
+    /// Returns a copy with every numeric field forced into its valid range,
+    /// and the two drag modifiers told apart.
     func clamped() -> TerminalSettings {
         var s = self
         s.cols = min(max(cols, Self.colsRange.lowerBound), Self.colsRange.upperBound)
@@ -95,6 +111,9 @@ struct TerminalSettings: Codable, Equatable {
         s.opacity = min(max(opacity, Self.opacityRange.lowerBound), Self.opacityRange.upperBound)
         s.fontSize = min(max(fontSize, Self.fontSizeRange.lowerBound), Self.fontSizeRange.upperBound)
         s.dimFactor = min(max(dimFactor, Self.dimFactorRange.lowerBound), Self.dimFactorRange.upperBound)
+        if s.swapModifier == s.rearrangeModifier {
+            s.swapModifier = s.rearrangeModifier == .option ? .command : .option
+        }
         return s
     }
 }

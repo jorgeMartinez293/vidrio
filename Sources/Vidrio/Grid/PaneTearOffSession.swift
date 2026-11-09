@@ -2,10 +2,10 @@ import Cocoa
 
 /// A pane ⌘-dragged out of its window. While the pointer stays outside,
 /// the pane floats under it as a frosted ghost and the grid it came from
-/// closes the gap. Over another grid window (only while ⌘ is held) that
-/// window springs its panes aside to preview where the pane would land,
-/// exactly like a window merge: its left or right third adds the pane as a
-/// new column on that side, the middle fills a short column. Dropping there
+/// closes the gap. Over another grid window (only while the drag key is
+/// held) that window springs its panes aside to preview where the pane
+/// would land: the row or column under the pointer, picked exactly as for
+/// a pane dragged within that grid (see `GridLayout.dropTarget`). Dropping there
 /// moves the pane, live shell included, into that window; dropping anywhere
 /// else opens it in a window of its own.
 @MainActor
@@ -55,14 +55,14 @@ final class PaneTearOffSession {
         fadeGhost(to: draggingAlpha, duration: 0.15)
     }
 
-    func update(at mouse: NSPoint, commandHeld: Bool) {
+    func update(at mouse: NSPoint, modifierHeld: Bool) {
         ghost.setFrameOrigin(NSPoint(x: mouse.x - grabOffset.width, y: mouse.y - grabOffset.height))
 
-        let newTarget = commandHeld
+        let newTarget = modifierHeld
             ? WindowMergeSession.dropTarget(at: mouse, among: candidates(), excluding: sourceWindow)
             : nil
         let newPlacement = newTarget.map {
-            WindowMergeSession.placement(at: mouse, over: $0.window.frame)
+            $0.grid.placementForIncomingPane(atScreenPoint: mouse)
         } ?? .fill
         let targetChanged = newTarget?.window !== target?.window
         guard targetChanged || newPlacement != placement else { return }
@@ -97,8 +97,8 @@ final class PaneTearOffSession {
 
     /// Mouse released outside the source window: the pane moves into the
     /// window under the pointer, or into a new one if there's none.
-    func finish(at mouse: NSPoint, commandHeld: Bool) {
-        update(at: mouse, commandHeld: commandHeld)
+    func finish(at mouse: NSPoint, modifierHeld: Bool) {
+        update(at: mouse, modifierHeld: modifierHeld)
         // Nil if the pane's shell exited mid-drag.
         guard let pane = sourceGrid.takeTornOffPane() else {
             cancel()

@@ -62,6 +62,32 @@ final class SettingsViewModel: ObservableObject {
         )
     }
 
+    /// Picking a drag modifier the other one already uses trades the two,
+    /// so they never end up the same key.
+    var rearrangeModifier: Binding<DragModifier> {
+        Binding(
+            get: { self.settings.rearrangeModifier },
+            set: { newValue in
+                var s = self.settings
+                if newValue == s.swapModifier { s.swapModifier = s.rearrangeModifier }
+                s.rearrangeModifier = newValue
+                self.settings = s
+            }
+        )
+    }
+
+    var swapModifier: Binding<DragModifier> {
+        Binding(
+            get: { self.settings.swapModifier },
+            set: { newValue in
+                var s = self.settings
+                if newValue == s.rearrangeModifier { s.rearrangeModifier = s.swapModifier }
+                s.swapModifier = newValue
+                self.settings = s
+            }
+        )
+    }
+
     /// SwiftUI Color binding backed by an RGBAColor keypath.
     func colorBinding(_ keyPath: WritableKeyPath<TerminalSettings, RGBAColor>) -> Binding<Color> {
         Binding(

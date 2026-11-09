@@ -1,11 +1,14 @@
 import Cocoa
 
-/// One ⌘-drag of a terminal window over the others. While the drag lasts
-/// the grid window under the pointer (only while ⌘ is held) springs its
-/// panes aside to open room for the incoming ones, and the dragged window
-/// fades so those gaps show through. Where the pointer sits over the
-/// target picks the placement: its left or right third puts the dragged
-/// window's columns beside the target's, the middle fills short columns.
+/// One ⌘-drag (the rearrange key, see `TerminalSettings`) of a terminal
+/// window over the others. While the drag lasts the grid window under the
+/// pointer (only while the key is held) springs its panes aside to open
+/// room for the incoming ones, and the dragged window fades so those gaps
+/// show through. Where the pointer sits over the target picks the
+/// placement: for a window with several panes, the target's left or right
+/// third puts the dragged window's columns beside the target's and the
+/// middle fills short columns; a window with a single pane lands in a row
+/// or column exactly like a pane dragged within the target grid.
 /// Dropping there moves every pane — live shells included — into that
 /// window, and the dragged window visibly shrinks into its new slots.
 @MainActor
@@ -48,11 +51,15 @@ final class WindowMergeSession {
         fadeSource(to: draggingAlpha, duration: 0.15)
     }
 
-    func update(at mouse: NSPoint, commandHeld: Bool) {
-        let newTarget = commandHeld
+    func update(at mouse: NSPoint, modifierHeld: Bool) {
+        let newTarget = modifierHeld
             ? Self.dropTarget(at: mouse, among: candidates(), excluding: source)
             : nil
-        let newPlacement = newTarget.map { Self.placement(at: mouse, over: $0.window.frame) } ?? .fill
+        let newPlacement = newTarget.map { target in
+            sourceGrid.paneCount == 1
+                ? target.grid.placementForIncomingPane(atScreenPoint: mouse)
+                : Self.placement(at: mouse, over: target.window.frame)
+        } ?? .fill
         let targetChanged = newTarget?.window !== target?.window
         guard targetChanged || newPlacement != placement else { return }
 
@@ -83,8 +90,8 @@ final class WindowMergeSession {
 
     /// Mouse released: merge if over a target, otherwise just leave the
     /// window where it was dropped.
-    func finish(at mouse: NSPoint, commandHeld: Bool) {
-        update(at: mouse, commandHeld: commandHeld)
+    func finish(at mouse: NSPoint, modifierHeld: Bool) {
+        update(at: mouse, modifierHeld: modifierHeld)
         popCursor()
         guard let target else {
             fadeSource(to: 1, duration: 0.18)
