@@ -24,6 +24,31 @@ fileprivate class VidrioTerminalView: LocalProcessTerminalView {
         scroll(toPosition: 1.0)
     }
 
+    /// Typing returns to the live screen. Programs that draw by moving the cursor never
+    /// bring the view back themselves, so a TUI launched while scrolled up would otherwise
+    /// render out of sight. Replies the terminal sends on its own aren't key events and
+    /// leave the view where the user put it.
+    override func send(source: TerminalView, data: ArraySlice<UInt8>) {
+        if NSApp.currentEvent?.type == .keyDown {
+            scroll(toPosition: 1.0)
+        }
+        super.send(source: source, data: data)
+    }
+
+    override func paste(_ sender: Any) {
+        scroll(toPosition: 1.0)
+        super.paste(sender)
+    }
+
+    /// Called with the viewport position whenever it moves. SwiftTerm doesn't forward this
+    /// to `LocalProcessTerminalViewDelegate`, so it has to be picked up here.
+    var onScrolled: ((Double) -> Void)?
+
+    override func scrolled(source: TerminalView, position: Double) {
+        super.scrolled(source: source, position: position)
+        onScrolled?(position)
+    }
+
     override func scrollWheel(with event: NSEvent) {
         guard scrollFilter.shouldDeliver(phase: event.phase, momentumPhase: event.momentumPhase) else { return }
         super.scrollWheel(with: event)
@@ -65,6 +90,9 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
     private var backdropView: BackdropView!
     var isClosing = false
     private var processStarted = false
+    private var processExited = false
+    private var didTerminateProcess = false
+    private var scrollIndicator: ScrollIndicatorView!
     private var shellExecutable: String = "/bin/zsh"
     private var shellEnvironment: [String] = []
     /// If set, the terminal launches `/bin/bash <scriptPath>` instead of an
@@ -169,18 +197,20 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
         guard !processStarted else { return }
         processStarted = true
         if let scriptPath {
-            // Run the supplied script directly. The script itself is expected
-            // to keep the window open (e.g. with a trailing `read`).
+            // The window closes by itself when this succeeds; on failure it
+            // stays open so the error can be read (see `processTerminated`).
+            let launch = ScriptLaunch.resolve(path: scriptPath)
             terminalView.startProcess(
-                executable: "/bin/bash",
-                args: [scriptPath],
+                executable: launch.executable,
+                args: launch.args,
                 environment: shellEnvironment
             )
         } else {
             terminalView.startProcess(
                 executable: shellExecutable,
                 args: [],
-                environment: shellEnvironment
+                environment: shellEnvironment,
+                execName: ShellLaunch.loginArgv0(forShell: shellExecutable)
             )
             refreshSerenoGreeter()
         }
@@ -205,9 +235,33 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
         // Prevent any further delegate callbacks
         terminalView?.processDelegate = nil
 
-        // Terminate the shell process
+        terminateProcessOnce()
+    }
+
+    /// `terminate()` signals the stored pid, so it must not run again once that pid has been
+    /// reaped: the system could have reused it for an unrelated process by then.
+    private func terminateProcessOnce() {
+        guard !didTerminateProcess else { return }
+        didTerminateProcess = true
         terminalView?.terminate()
     }
+
+    /// The program that closing this terminal would interrupt: whatever holds the terminal's
+    /// foreground, or the script itself. Nil at an idle shell prompt.
+    var busyProcessName: String? {
+        guard processStarted, !processExited, !isClosing,
+              let process = terminalView?.process, process.running else { return nil }
+        if let scriptPath {
+            return URL(fileURLWithPath: scriptPath).lastPathComponent
+        }
+        let foreground = tcgetpgrp(process.childfd)
+        guard foreground > 0, foreground != process.shellPid else { return nil }
+        var buffer = [CChar](repeating: 0, count: 256)
+        guard proc_name(foreground, &buffer, UInt32(buffer.count)) > 0 else { return "A program" }
+        return String(cString: buffer)
+    }
+
+    var busyProcessNames: [String] { busyProcessName.map { [$0] } ?? [] }
 
 
 
@@ -258,6 +312,9 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
         terminalView.terminal.registerOscHandler(code: Self.greetOSCCode) { [weak self] _ in
             Task { @MainActor [weak self] in self?.handleGreetRequest() }
         }
+        terminalView.terminal.changeHistorySize(settings.scrollbackLines)
+        // The built-in scroller takes columns away from the terminal;
+        // `scrollIndicator` shows the position without using any space.
         terminalView.scrollerEnabled = false
         // Trackpad touches are needed to count the fingers behind a scroll.
         terminalView.allowedTouchTypes.insert(.indirect)
@@ -297,6 +354,20 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
         terminalBottomConstraint = terminalView.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -bottomInset)
         NSLayoutConstraint.activate([
             terminalTopConstraint, terminalLeadingConstraint, terminalTrailingConstraint, terminalBottomConstraint
+        ])
+
+        scrollIndicator = ScrollIndicatorView(frame: view.bounds)
+        scrollIndicator.translatesAutoresizingMaskIntoConstraints = false
+        scrollIndicator.color = settings.textColor.nsColor
+        terminalView.onScrolled = { [weak self] position in
+            self?.updateScrollIndicator(position: position)
+        }
+        view.addSubview(scrollIndicator)
+        NSLayoutConstraint.activate([
+            scrollIndicator.topAnchor.constraint(equalTo: terminalView.topAnchor),
+            scrollIndicator.bottomAnchor.constraint(equalTo: terminalView.bottomAnchor),
+            scrollIndicator.leadingAnchor.constraint(equalTo: terminalView.leadingAnchor),
+            scrollIndicator.trailingAnchor.constraint(equalTo: terminalView.trailingAnchor)
         ])
 
         // Build shell environment (process starts in viewDidLayout after layout is finalized)
@@ -365,8 +436,14 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
     }
 
     func applySettings(_ newSettings: TerminalSettings) {
+        let scrollbackChanged = newSettings.scrollbackLines != settings.scrollbackLines
         settings = newSettings
         applyBackdrop()
+        if scrollbackChanged {
+            terminalView.terminal.changeHistorySize(settings.scrollbackLines)
+            updateScrollIndicator(position: terminalView.scrollPosition)
+        }
+        scrollIndicator.color = settings.textColor.nsColor
 
         if settings.backgroundColorEnabled {
             backgroundOverlay.layer?.backgroundColor =
@@ -451,29 +528,37 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
         // Handle CWD update
     }
 
-    // Snap to the bottom whenever the user inadvertently scrolls up via trackpad.
-    // Since scrollerEnabled = false there is no UI affordance for scrollback, so
-    // any scroll position != bottom should be corrected immediately.
-    nonisolated func scrolled(source: TerminalView, position: Double) {
-        guard position < 1.0 else { return }
-        Task { @MainActor [weak self] in
-            self?.terminalView.scroll(toPosition: 1.0)
-        }
+    private func updateScrollIndicator(position: Double) {
+        scrollIndicator?.show(position: terminalView.canScroll && position < 1 ? position : nil)
     }
 
     nonisolated func processTerminated(source: TerminalView, exitCode: Int32?) {
         print("Process terminated with exit code: \(String(describing: exitCode))")
         Task { @MainActor [weak self] in
             guard let self, !self.isClosing else { return }
-            if let onProcessExit = self.onProcessExit {
+            self.processExited = true
+            let exit = ProcessExit(waitStatus: exitCode)
+            if self.scriptPath != nil, !exit.isSuccess {
+                self.showFailedScriptNotice(exit)
+            } else if let onProcessExit = self.onProcessExit {
                 // Hosted as a pane: let the host (e.g. GridViewController)
                 // decide what to do instead of closing the whole window.
                 onProcessExit()
             } else if let window = self.view.window {
-                // Use performClose to route through windowShouldClose
-                // which handles cleanup without crashing
-                window.performClose(nil)
+                // Asks the delegate directly: `performClose` does nothing
+                // while a close confirmation sheet is attached.
+                _ = window.delegate?.windowShouldClose?(window)
             }
+        }
+    }
+
+    /// Keeps a failed script's window open with its output and how it ended. Waits a moment
+    /// because the exit can be reported before the script's last output has been read.
+    private func showFailedScriptNotice(_ exit: ProcessExit) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+            guard let self, !self.isClosing else { return }
+            self.terminateProcessOnce()
+            self.terminalView.feed(text: "\r\n\u{1B}[2m[\(exit.summary). Press ⌘W to close.]\u{1B}[0m\r\n")
         }
     }
 }

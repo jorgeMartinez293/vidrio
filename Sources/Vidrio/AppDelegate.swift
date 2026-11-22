@@ -39,24 +39,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
-    /// One-time cleanup for machines that ran the old standalone sereno installer: its
-    /// `.zshrc` block calls a `sereno_greet` shell function that no longer exists now that
-    /// the greeter renders natively (see TerminalViewController.refreshSerenoGreeter). Left
-    /// in place it would print a "command not found" on every new shell. Mirrors the
-    /// pokefetch-block removal sereno's own install.sh used to do. Idempotent: no-ops once
-    /// the block is gone.
-    /// Matched structurally (marker line through the trailing bare `sereno_greet` call)
-    /// rather than as one verbatim literal — real-world installs vary inside that span
-    /// (e.g. `%F{white}` vs `%F{15}` in the PROMPT line, depending on install.sh vintage),
-    /// so an exact-string match silently leaves the block — and the shell errors — in place.
+    /// Idempotent: no-ops once the block is gone.
     private func removeLegacySerenoShellIntegration() {
-        let zshrc = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".zshrc")
-        guard var contents = try? String(contentsOf: zshrc, encoding: .utf8),
-              let markerRange = contents.range(of: "\n# sereno\n"),
-              let endRange = contents.range(of: "\nsereno_greet\n", range: markerRange.upperBound..<contents.endIndex)
-        else { return }
-        contents.removeSubrange(markerRange.lowerBound..<endRange.upperBound)
-        try? contents.write(to: zshrc, atomically: true, encoding: .utf8)
+        LegacySerenoCleanup.run(
+            on: FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".zshrc")
+        )
     }
 
     /// Exact suffix only — NOT a directory-prefix check.
@@ -336,8 +323,30 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     // request, hide the window, and release it on a delay.
     
     func windowShouldClose(_ window: NSWindow) -> Bool {
-        dismissWindow(window)
+        let busy = (window.contentViewController as? TerminalHosting)?.busyProcessNames ?? []
+        if let sheet = window.attachedSheet {
+            // A question is already up. If its program has since ended there
+            // is nothing left to ask about.
+            if busy.isEmpty {
+                window.endSheet(sheet, returnCode: .cancel)
+                dismissWindow(window)
+            }
+        } else if busy.isEmpty {
+            dismissWindow(window)
+        } else {
+            CloseConfirmation.present(.window, processNames: busy, on: window) { [weak self, weak window] confirmed in
+                // The delegate is cleared once a window has been dismissed.
+                guard confirmed, let self, let window, window.delegate != nil else { return }
+                self.dismissWindow(window)
+            }
+        }
         return false // Prevent NSWindow.close() from running
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let busy = windows.flatMap { ($0.contentViewController as? TerminalHosting)?.busyProcessNames ?? [] }
+        guard !busy.isEmpty else { return .terminateNow }
+        return CloseConfirmation.confirm(.app, processNames: busy) ? .terminateNow : .terminateCancel
     }
     
     /// Hides and releases a window without going through NSWindow.close().

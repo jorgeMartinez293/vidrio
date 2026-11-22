@@ -39,6 +39,16 @@ enum ZshPromptShim {
             let zshenv = """
             [[ -f "$HOME/.zshenv" ]] && source "$HOME/.zshenv"
             """
+            // Sourced for login shells, between .zshenv and .zshrc. ZDOTDIR must point back
+            // at this shim afterwards or zsh would skip the .zshrc below. The user's .zlogin
+            // needs no shim: it runs after .zshrc, which has already restored ZDOTDIR.
+            let zprofile = """
+            _vidrio_zdotdir="$ZDOTDIR"
+            ZDOTDIR="$HOME"
+            [[ -f "$HOME/.zprofile" ]] && source "$HOME/.zprofile"
+            ZDOTDIR="$_vidrio_zdotdir"
+            unset _vidrio_zdotdir
+            """
             // Sourced for interactive shells. Restores ZDOTDIR to $HOME first so anything
             // in the user's real .zshrc that reads it (rare, but some frameworks cache
             // paths off it) sees the normal value, not this shim directory.
@@ -48,6 +58,7 @@ enum ZshPromptShim {
             [[ -n "$VIDRIO_PROMPT" ]] && PROMPT="$VIDRIO_PROMPT"
             """
             try zshenv.write(to: dir.appendingPathComponent(".zshenv"), atomically: true, encoding: .utf8)
+            try zprofile.write(to: dir.appendingPathComponent(".zprofile"), atomically: true, encoding: .utf8)
             try zshrc.write(to: dir.appendingPathComponent(".zshrc"), atomically: true, encoding: .utf8)
             return true
         } catch {

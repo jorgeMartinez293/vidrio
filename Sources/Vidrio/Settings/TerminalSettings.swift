@@ -25,8 +25,13 @@ struct TerminalSettings: Codable, Equatable {
     /// Held while dragging a pane, swaps it with the pane it's dropped on.
     /// Always differs from `rearrangeModifier`.
     var swapModifier: DragModifier
+    /// Lines of output each pane keeps above the screen.
+    var scrollbackLines: Int
+
+    static let defaultScrollbackLines = 10_000
 
     // Valid ranges.
+    static let scrollbackRange = 0...100_000
     static let colsRange = 20...400
     static let rowsRange = 5...200
     static let opacityRange = 0.0...1.0
@@ -61,7 +66,8 @@ struct TerminalSettings: Codable, Equatable {
         dimFactor: Double = TerminalSettings.defaults.dimFactor,
         secondaryTextColor: RGBAColor? = nil,
         rearrangeModifier: DragModifier = .command,
-        swapModifier: DragModifier = .option
+        swapModifier: DragModifier = .option,
+        scrollbackLines: Int = TerminalSettings.defaultScrollbackLines
     ) {
         self.cols = cols
         self.rows = rows
@@ -77,6 +83,7 @@ struct TerminalSettings: Codable, Equatable {
         self.secondaryTextColor = secondaryTextColor
         self.rearrangeModifier = rearrangeModifier
         self.swapModifier = swapModifier
+        self.scrollbackLines = scrollbackLines
     }
 
     /// Decodes missing fields to their default value (via `decodeIfPresent`) so
@@ -99,6 +106,7 @@ struct TerminalSettings: Codable, Equatable {
         self.secondaryTextColor = try c.decodeIfPresent(RGBAColor.self, forKey: .secondaryTextColor)
         self.rearrangeModifier = try c.decodeIfPresent(DragModifier.self, forKey: .rearrangeModifier) ?? d.rearrangeModifier
         self.swapModifier = try c.decodeIfPresent(DragModifier.self, forKey: .swapModifier) ?? d.swapModifier
+        self.scrollbackLines = try c.decodeIfPresent(Int.self, forKey: .scrollbackLines) ?? d.scrollbackLines
         self = self.clamped()
     }
 
@@ -111,6 +119,7 @@ struct TerminalSettings: Codable, Equatable {
         s.opacity = min(max(opacity, Self.opacityRange.lowerBound), Self.opacityRange.upperBound)
         s.fontSize = min(max(fontSize, Self.fontSizeRange.lowerBound), Self.fontSizeRange.upperBound)
         s.dimFactor = min(max(dimFactor, Self.dimFactorRange.lowerBound), Self.dimFactorRange.upperBound)
+        s.scrollbackLines = min(max(scrollbackLines, Self.scrollbackRange.lowerBound), Self.scrollbackRange.upperBound)
         if s.swapModifier == s.rearrangeModifier {
             s.swapModifier = s.rearrangeModifier == .option ? .command : .option
         }

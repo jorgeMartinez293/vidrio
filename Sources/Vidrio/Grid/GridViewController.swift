@@ -7,6 +7,8 @@ import Cocoa
 protocol TerminalHosting: AnyObject {
     func cleanup()
     func applySettings(_ newSettings: TerminalSettings)
+    /// Programs that closing this host would interrupt.
+    var busyProcessNames: [String] { get }
 }
 
 extension TerminalViewController: TerminalHosting {}
@@ -90,6 +92,8 @@ class GridViewController: NSViewController, TerminalHosting {
     /// Set while another window is merge-dragged over this one and the
     /// grid shows where its panes would go.
     private var isPreviewingMerge = false
+    /// The pane a close confirmation sheet is currently asking about.
+    private weak var paneAwaitingCloseConfirmation: TerminalViewController?
     /// Moves cells by hand while a pane is dragged and as everything
     /// settles after the drop, so slots can change mid-flight.
     private lazy var springs = FrameSpringAnimator(host: view)
@@ -396,9 +400,20 @@ class GridViewController: NSViewController, TerminalHosting {
         // Pane indices are about to shift under the drag; put it back first.
         endPaneDrag(cancelled: true)
 
+        // Its program ended while the user was being asked: nothing left to confirm.
+        if paneAwaitingCloseConfirmation === controller, let window = view.window,
+           let sheet = window.attachedSheet {
+            paneAwaitingCloseConfirmation = nil
+            window.endSheet(sheet, returnCode: .cancel)
+        }
+
         guard panes.count > 1 else {
             // Last pane left: behave like closing a normal terminal window.
-            view.window?.performClose(nil)
+            // Asks the delegate directly: `performClose` does nothing while
+            // a close confirmation sheet is attached.
+            if let window = view.window {
+                _ = window.delegate?.windowShouldClose?(window)
+            }
             return
         }
 
@@ -432,8 +447,21 @@ class GridViewController: NSViewController, TerminalHosting {
         guard focusedIndex < panes.count else { return }
         if panes.count == 1 {
             view.window?.performClose(nil)
-        } else {
-            closePane(panes[focusedIndex].controller)
+            return
+        }
+        let controller = panes[focusedIndex].controller
+        guard let name = controller.busyProcessName, let window = view.window else {
+            closePane(controller)
+            return
+        }
+        guard window.attachedSheet == nil else { return }
+        paneAwaitingCloseConfirmation = controller
+        CloseConfirmation.present(.pane, processNames: [name], on: window) { [weak self, weak controller] confirmed in
+            guard let self else { return }
+            self.paneAwaitingCloseConfirmation = nil
+            if confirmed, let controller {
+                self.closePane(controller)
+            }
         }
     }
 
@@ -932,6 +960,10 @@ class GridViewController: NSViewController, TerminalHosting {
         for pane in panes {
             pane.controller.cleanup()
         }
+    }
+
+    var busyProcessNames: [String] {
+        panes.flatMap(\.controller.busyProcessNames)
     }
 
     func applySettings(_ newSettings: TerminalSettings) {

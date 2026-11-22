@@ -67,6 +67,12 @@ struct SettingsView: View {
                 }
             }
 
+            Section("Historial") {
+                Stepper(value: s.scrollbackLines, in: TerminalSettings.scrollbackRange, step: 1000) {
+                    LabeledContent("Líneas por panel", value: "\(viewModel.settings.scrollbackLines)")
+                }
+            }
+
             Section {
                 Picker("Reorganizar paneles", selection: viewModel.rearrangeModifier) {
                     ForEach(DragModifier.allCases, id: \.self) { modifier in
