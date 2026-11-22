@@ -9,3 +9,8 @@ DerivedData/
 .netrc
 LiquidTerminal.app/
 app.log
+
+# Build outputs. dist/ must stay on disk: release.sh needs past zips to compute deltas.
+/dist/
+/vidrio.app/
+.Rhistory
