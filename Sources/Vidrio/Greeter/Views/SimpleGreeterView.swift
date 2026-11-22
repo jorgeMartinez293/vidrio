@@ -5,7 +5,7 @@ import UniformTypeIdentifiers
 
 /// The Greeter panel: pick a sprite on the left, see what the greeting will
 /// look like on the right, tweak the options along the bottom, press
-/// "Guardar". Nothing is written to disk until then — picking a sprite only
+/// "Save". Nothing is written to disk until then — picking a sprite only
 /// updates the live preview.
 ///
 /// This is a deliberately plain replacement for the earlier split-view panel:
@@ -87,14 +87,14 @@ struct SimpleGreeterView: View {
     private var spriteList: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
-                TextField("Buscar", text: $searchText)
+                TextField("Search", text: $searchText)
                     .textFieldStyle(.roundedBorder)
                 Button {
                     presentImportPanel()
                 } label: {
                     Image(systemName: "plus")
                 }
-                .help("Añadir sprites desde el disco")
+                .help("Add sprites from disk")
             }
             .padding(10)
 
@@ -103,7 +103,7 @@ struct SimpleGreeterView: View {
             ScrollView {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 76), spacing: 8)], spacing: 8) {
                     if searchText.isEmpty {
-                        SpriteCard(title: "Aleatorio",
+                        SpriteCard(title: "Random",
                                    isSelected: isRandomMode,
                                    accentColor: accentColor) {
                             Image(systemName: "dice.fill")
@@ -121,14 +121,14 @@ struct SimpleGreeterView: View {
                         }
                         .onTapGesture { select(sprite) }
                         .contextMenu {
-                            Button("Eliminar", role: .destructive) { delete(sprite) }
+                            Button("Delete", role: .destructive) { delete(sprite) }
                         }
                     }
                 }
                 .padding(10)
 
                 if filtered.isEmpty {
-                    Text(searchText.isEmpty ? "No hay sprites todavía" : "Sin resultados")
+                    Text(searchText.isEmpty ? "No sprites yet" : "No results")
                         .font(.callout).foregroundColor(.secondary)
                         .padding(.top, 30)
                 }
@@ -139,7 +139,7 @@ struct SimpleGreeterView: View {
             HStack {
                 Text("\(filtered.count) sprites")
                 Spacer()
-                Text(isDropTargeted ? "Suelta para añadir" : "Arrastra .gif aquí")
+                Text(isDropTargeted ? "Drop to add" : "Drag .gif here")
             }
             .font(.caption).foregroundColor(.secondary)
             .padding(.horizontal, 10).padding(.vertical, 6)
@@ -152,9 +152,9 @@ struct SimpleGreeterView: View {
     private var previewPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Vista previa").font(.caption).foregroundColor(.secondary)
+                Text("Preview").font(.caption).foregroundColor(.secondary)
                 Spacer()
-                Text(showsGIF ? "GIF animado" : "Imagen estática")
+                Text(showsGIF ? "Animated GIF" : "Still image")
                     .font(.caption).foregroundColor(.secondary)
             }
 
@@ -220,13 +220,13 @@ struct SimpleGreeterView: View {
             Button {
                 showFieldsPicker = true
             } label: {
-                Label("Información", systemImage: "list.bullet.rectangle")
+                Label("Info", systemImage: "list.bullet.rectangle")
             }
-            .help("Elige qué datos del sistema se muestran junto al sprite")
+            .help("Choose which system details appear next to the sprite")
 
             ColorPicker("", selection: bulletColorBinding, supportsOpacity: false)
                 .labelsHidden()
-                .help("Color del punto y del prompt")
+                .help("Bullet and prompt color")
 
             if config.bulletColorHex != nil {
                 Button {
@@ -237,21 +237,21 @@ struct SimpleGreeterView: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundColor(.secondary)
-                .help("Usar el color del sprite")
+                .help("Use the sprite’s color")
             }
 
             Spacer()
 
             if saveFailed {
-                Label("Error al guardar", systemImage: "exclamationmark.triangle.fill")
+                Label("Couldn’t save", systemImage: "exclamationmark.triangle.fill")
                     .font(.caption).foregroundColor(.orange)
             }
 
-            Button("Guardar") { persist() }
+            Button("Save") { persist() }
                 .buttonStyle(.borderedProminent)
                 .tint(accentColor)
                 .disabled(!isDirty)
-                .help("Aplica el sprite y color actuales, incluidas las ventanas de vidrio ya abiertas")
+                .help("Applies the current sprite and color, including to open vidrio windows")
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
         .background(.bar)

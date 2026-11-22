@@ -19,10 +19,10 @@ enum DragModifier: String, Codable, CaseIterable {
 
     var displayName: String {
         switch self {
-        case .command: return "⌘ Comando"
-        case .option: return "⌥ Opción"
+        case .command: return "⌘ Command"
+        case .option: return "⌥ Option"
         case .control: return "⌃ Control"
-        case .shift: return "⇧ Mayúsculas"
+        case .shift: return "⇧ Shift"
         }
     }
 

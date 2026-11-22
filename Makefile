@@ -1,4 +1,4 @@
-# Makefile for vidrio (familia vaho)
+# Makefile for vidrio (vaho family)
 
 APP_NAME = vidrio
 EXECUTABLE = Vidrio

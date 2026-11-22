@@ -8,7 +8,7 @@ final class SettingsWindowController: NSWindowController {
         let viewModel = SettingsViewModel()
         let hosting = NSHostingController(rootView: SettingsView(viewModel: viewModel))
         let window = NSWindow(contentViewController: hosting)
-        window.title = "Ajustes"
+        window.title = "Settings"
         window.styleMask = [.titled, .closable, .miniaturizable]
         window.isReleasedWhenClosed = false
         window.center()

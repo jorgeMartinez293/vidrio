@@ -93,6 +93,27 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
     private var processExited = false
     private var didTerminateProcess = false
     private var scrollIndicator: ScrollIndicatorView!
+    /// Exported to the shell as `VIDRIO_PANE_ID`, so agent hooks can report to this pane.
+    let paneID = UUID().uuidString
+    /// Directory the shell starts in. Nil means the home directory.
+    var initialDirectory: String?
+    /// Called when the unread mark, agent state or ring color changes.
+    var onStatusChange: (() -> Void)?
+    var hasUnreadActivity = false { didSet { onStatusChange?() } }
+    var agentState: AgentState? { didSet { onStatusChange?() } }
+    private var linkHighlight: LinkHighlightView?
+    private var paneTitle: String?
+    private var eventProxy: TerminalEventProxy?
+    private var findBar: FindBarView?
+    private var promptMarks = PromptMarks()
+    /// Last known index of the oldest line still in the scrollback.
+    private var knownFirstRow = 0
+    private var lastColumnCount = 0
+    private var fontOffset: Double = 0
+    private var kittyNotifications = KittyNotificationAssembler()
+    private var isAskingAboutClipboard = false
+    /// The ANSI palette currently installed, if the greeter's replaced the default one.
+    private var installedPalette: [String]?
     private var shellExecutable: String = "/bin/zsh"
     private var shellEnvironment: [String] = []
     /// If set, the terminal launches `/bin/bash <scriptPath>` instead of an
@@ -107,6 +128,8 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
     /// selection the sprite is picked at random, and resolving twice could pick two.
     private var greeterConfig = GreeterConfig()
     private var greeterSprite: URL?
+    /// The color of this pane's greeter bullets and prompt.
+    private var greeterAccent: SpriteColor?
 
     /// Called when the shell process exits. When set (hosted as a pane in
     /// `GridViewController`), the host decides what to do with the pane
@@ -210,10 +233,19 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
                 executable: shellExecutable,
                 args: [],
                 environment: shellEnvironment,
-                execName: ShellLaunch.loginArgv0(forShell: shellExecutable)
+                execName: ShellLaunch.loginArgv0(forShell: shellExecutable),
+                currentDirectory: startingDirectory
             )
             refreshSerenoGreeter()
         }
+    }
+
+    /// `initialDirectory` if it still exists: the pane it came from may have deleted it.
+    private var startingDirectory: String? {
+        guard let initialDirectory else { return nil }
+        var isDirectory: ObjCBool = false
+        let exists = FileManager.default.fileExists(atPath: initialDirectory, isDirectory: &isDirectory)
+        return exists && isDirectory.boolValue ? initialDirectory : nil
     }
 
     override func viewDidAppear() {
@@ -231,6 +263,8 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
     func cleanup() {
         guard !isClosing else { return }
         isClosing = true
+        AttentionCenter.shared.unregister(self)
+        linkHighlight?.clear()
 
         // Prevent any further delegate callbacks
         terminalView?.processDelegate = nil
@@ -262,6 +296,437 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
     }
 
     var busyProcessNames: [String] { busyProcessName.map { [$0] } ?? [] }
+
+    func terminal(atWindowPoint point: NSPoint) -> TerminalViewController? { self }
+
+    // MARK: - Pane facts
+
+    /// The shell's current directory.
+    var currentDirectory: String? {
+        guard !processExited, let pid = terminalView?.process.shellPid, pid > 0 else {
+            return initialDirectory
+        }
+        return PaneInfo.workingDirectory(pid: pid) ?? initialDirectory
+    }
+
+    var shellPID: pid_t? {
+        guard !processExited, let pid = terminalView?.process.shellPid, pid > 0 else { return nil }
+        return pid
+    }
+
+    /// What to call this pane in lists and notifications.
+    var displayTitle: String {
+        if let paneTitle, !paneTitle.isEmpty { return paneTitle }
+        if let directory = currentDirectory {
+            return directory == NSHomeDirectory() ? "~" : (directory as NSString).lastPathComponent
+        }
+        return "vidrio"
+    }
+
+    /// Whether the user is looking at this pane right now.
+    var isFrontmostPane: Bool {
+        guard NSApp.isActive, let window = view.window, window.isKeyWindow else { return false }
+        return (window.contentViewController as? GridViewController)?.isFocused(self) ?? true
+    }
+
+    // MARK: - Terminal requests
+
+    private func installEventProxy() {
+        let proxy = TerminalEventProxy(view: terminalView)
+        proxy.onOpenLink = { link in
+            guard LinkPolicy.allowsURL(link), let url = URL(string: link) else { return }
+            NSWorkspace.shared.open(url)
+        }
+        proxy.onClipboardWrite = { [weak self] content in self?.handleClipboardWrite(content) }
+        proxy.onBell = { [weak self] in
+            guard let self else { return }
+            AttentionCenter.shared.ring(self)
+        }
+        proxy.onContentChanged = { [weak self] in self?.refreshLinkHighlight() }
+        eventProxy = proxy
+        terminalView.terminalDelegate = proxy
+    }
+
+    private func registerOSCHandlers() {
+        let terminal: Terminal = terminalView.terminal
+        func onText(_ code: Int, _ handle: @escaping @MainActor (TerminalViewController, String) -> Void) {
+            terminal.registerOscHandler(code: code) { [weak self] data in
+                let text = String(decoding: data, as: UTF8.self)
+                Task { @MainActor [weak self] in
+                    if let self { handle(self, text) }
+                }
+            }
+        }
+        onText(9) { pane, text in pane.receive(TerminalNotificationParser.parseOSC9(text)) }
+        onText(777) { pane, text in pane.receive(TerminalNotificationParser.parseOSC777(text)) }
+        onText(99) { pane, text in pane.receive(pane.kittyNotifications.feed(text)) }
+        onText(Self.agentStateOSCCode) { pane, text in
+            guard let report = AgentStateReport.parse(text) else { return }
+            AttentionCenter.shared.apply(report, to: pane)
+        }
+        // Read synchronously: the mark is only right for where the cursor is at this moment.
+        terminal.registerOscHandler(code: 133) { [weak self] data in
+            guard data.first == UInt8(ascii: "A"), Thread.isMainThread else { return }
+            MainActor.assumeIsolated { self?.recordPrompt() }
+        }
+    }
+
+    /// OSC any tool can use to set the pane's status dot: `working`, `waiting`, `done`,
+    /// `error`, or `ended` to clear it.
+    private static let agentStateOSCCode = 7771
+
+    private func receive(_ message: TerminalMessage?) {
+        guard let message else { return }
+        AttentionCenter.shared.notify(self, message: message)
+    }
+
+    private func handleClipboardWrite(_ content: Data) {
+        guard let text = String(data: content, encoding: .utf8) else { return }
+        switch SettingsStore.shared.current.clipboardAccess {
+        case .allow: Self.copyToClipboard(text)
+        case .deny: break
+        case .ask: askBeforeCopying(text)
+        }
+    }
+
+    private static func copyToClipboard(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    private func askBeforeCopying(_ text: String) {
+        guard !isAskingAboutClipboard, let window = view.window, window.attachedSheet == nil else { return }
+        isAskingAboutClipboard = true
+        let alert = NSAlert()
+        alert.messageText = "Allow this program to change the clipboard?"
+        let preview = text.prefix(200)
+        alert.informativeText = preview + (text.count > preview.count ? "…" : "")
+        alert.addButton(withTitle: "Don't Allow")
+        alert.addButton(withTitle: "Allow")
+        alert.showsSuppressionButton = true
+        alert.suppressionButton?.title = "Always allow"
+        alert.beginSheetModal(for: window) { [weak self, weak alert] response in
+            MainActor.assumeIsolated {
+                self?.isAskingAboutClipboard = false
+                guard response == .alertSecondButtonReturn else { return }
+                Self.copyToClipboard(text)
+                if alert?.suppressionButton?.state == .on {
+                    SettingsStore.shared.current.clipboardAccess = .allow
+                    SettingsStore.shared.save()
+                }
+            }
+        }
+    }
+
+    // MARK: - Links
+
+    /// A link on screen. `cells` counts visible cells left to right, top to bottom.
+    private struct LinkHit {
+        let link: DetectedLink
+        let isHyperlink: Bool
+        let cells: Range<Int>
+    }
+
+    /// `getOptimalFrameSize` counts the scroller's width even while it's disabled.
+    private var cellSize: CGSize? {
+        guard let terminal = terminalView.terminal, terminal.cols > 0, terminal.rows > 0 else { return nil }
+        let optimal = terminalView.getOptimalFrameSize()
+        let scrollerWidth = terminalView.subviews.first { $0 is NSScroller }?.frame.width ?? 0
+        return CGSize(
+            width: (optimal.width - scrollerWidth) / CGFloat(terminal.cols),
+            height: optimal.height / CGFloat(terminal.rows)
+        )
+    }
+
+    /// ⌘-click on plain text. OSC 8 hyperlinks are left to SwiftTerm, which opens them
+    /// through `TerminalEventProxy`.
+    func openLink(atWindowPoint windowPoint: NSPoint) {
+        guard let hit = linkHit(atWindowPoint: windowPoint), !hit.isHyperlink else { return }
+        LinkOpener.open(hit.link, workingDirectory: currentDirectory)
+    }
+
+    func updateLinkHighlight(atWindowPoint point: NSPoint?) {
+        guard let linkHighlight else { return }
+        guard let point, let hit = linkHit(atWindowPoint: point), let cell = cellSize,
+              let columns = terminalView.terminal?.cols else {
+            linkHighlight.clear()
+            return
+        }
+        var rects: [NSRect] = []
+        var index = hit.cells.lowerBound
+        while index < hit.cells.upperBound {
+            let column = index % columns
+            let count = min(columns - column, hit.cells.upperBound - index)
+            rects.append(NSRect(
+                x: CGFloat(column) * cell.width,
+                y: CGFloat(index / columns + 1) * cell.height - 1.5,
+                width: CGFloat(count) * cell.width,
+                height: 1
+            ))
+            index += count
+        }
+        linkHighlight.show(rects, color: greeterMatchedAccent.map(Self.nsColor) ?? settings.textColor.nsColor)
+    }
+
+    /// Output can move the text under a pointer that isn't moving.
+    private func refreshLinkHighlight() {
+        guard linkHighlight?.isShowing == true, let window = view.window else { return }
+        let held = NSEvent.modifierFlags.contains(.command)
+        updateLinkHighlight(atWindowPoint: held ? window.mouseLocationOutsideOfEventStream : nil)
+    }
+
+    /// The link at a window point, if clicking it would open something.
+    private func linkHit(atWindowPoint windowPoint: NSPoint) -> LinkHit? {
+        guard let terminal = terminalView.terminal, let cell = cellSize else { return nil }
+        let point = terminalView.convert(windowPoint, from: nil)
+        guard terminalView.bounds.contains(point) else { return nil }
+        let column = Int(point.x / cell.width)
+        let row = Int((terminalView.bounds.height - point.y) / cell.height)
+        guard let line = terminal.getLine(row: row), column < terminal.cols else { return nil }
+
+        if let hovered = terminal.getCharData(col: column, row: row)?.getPayload() as? String {
+            guard let url = LinkDetector.hyperlinkURL(payload: hovered), LinkPolicy.allowsURL(url) else { return nil }
+            let columns = terminal.cols
+            func payload(atCell index: Int) -> String? {
+                terminal.getCharData(col: index % columns, row: index / columns)?.getPayload() as? String
+            }
+            let hoveredCell = row * columns + column
+            var start = hoveredCell
+            while start > 0, payload(atCell: start - 1) == hovered { start -= 1 }
+            var end = hoveredCell + 1
+            while end < columns * terminal.rows, payload(atCell: end) == hovered { end += 1 }
+            return LinkHit(link: .url(url), isHyperlink: true, cells: start..<end)
+        }
+
+        // A long link wraps across rows: a row filled to the last column continues below.
+        // Cells a program skipped with cursor moves hold NUL, which must read as a gap.
+        func rowText(_ line: BufferLine?, trimRight: Bool) -> String {
+            line?.translateToString(trimRight: trimRight) { cell in
+                let character = cell.getCharacter()
+                return character == "\0" ? " " : character
+            } ?? ""
+        }
+        func isFull(_ row: Int) -> Bool {
+            rowText(terminal.getLine(row: row), trimRight: true).count == terminal.cols
+        }
+        var firstRow = row
+        while firstRow > 0, isFull(firstRow - 1) { firstRow -= 1 }
+        var lastRow = row
+        while lastRow < terminal.rows - 1, isFull(lastRow) { lastRow += 1 }
+        var text = ""
+        for current in firstRow...lastRow {
+            text += rowText(current == row ? line : terminal.getLine(row: current), trimRight: current == lastRow)
+        }
+        let offset = (row - firstRow) * terminal.cols + column
+        guard let match = LinkDetector.match(in: text, atOffset: offset),
+              LinkPolicy.canOpen(match.link, workingDirectory: currentDirectory) else { return nil }
+        let firstCell = firstRow * terminal.cols
+        return LinkHit(
+            link: match.link, isHyperlink: false,
+            cells: (firstCell + match.range.lowerBound)..<(firstCell + match.range.upperBound)
+        )
+    }
+
+    // MARK: - Find
+
+    @objc func showFindBar(_ sender: Any?) {
+        if findBar == nil {
+            let bar = FindBarView(frame: .zero)
+            bar.translatesAutoresizingMaskIntoConstraints = false
+            bar.onSearch = { [weak self] query, backwards in self?.search(query, backwards: backwards) }
+            bar.onClose = { [weak self] in self?.closeFindBar() }
+            view.addSubview(bar)
+            NSLayoutConstraint.activate([
+                bar.topAnchor.constraint(equalTo: terminalView.topAnchor, constant: 6),
+                bar.trailingAnchor.constraint(equalTo: terminalView.trailingAnchor, constant: -8),
+                bar.heightAnchor.constraint(equalToConstant: 36),
+                bar.widthAnchor.constraint(lessThanOrEqualTo: terminalView.widthAnchor, constant: -16),
+            ])
+            findBar = bar
+        }
+        view.layoutSubtreeIfNeeded()
+        findBar?.focus()
+    }
+
+    @objc func findNextMatch(_ sender: Any?) {
+        guard let findBar else { return showFindBar(sender) }
+        search(findBar.query, backwards: false)
+    }
+
+    @objc func findPreviousMatch(_ sender: Any?) {
+        guard let findBar else { return showFindBar(sender) }
+        search(findBar.query, backwards: true)
+    }
+
+    private func search(_ query: String, backwards: Bool) {
+        guard !query.isEmpty else {
+            terminalView.clearSearch()
+            findBar?.showResult(found: false)
+            return
+        }
+        let found = backwards ? terminalView.findPrevious(query) : terminalView.findNext(query)
+        findBar?.showResult(found: found)
+    }
+
+    private func closeFindBar() {
+        terminalView.clearSearch()
+        findBar?.isHidden = true
+        findBar?.removeFromSuperview()
+        findBar = nil
+        focusTerminal()
+    }
+
+    // MARK: - Prompts
+
+    /// Index of the oldest line still in the scrollback. SwiftTerm only exposes it through
+    /// which rows are valid, so this walks forward from the last known value in steps that
+    /// can't skip past the valid range, then narrows down to its first row.
+    private func firstBufferRow() -> Int {
+        let terminal: Terminal = terminalView.terminal
+        if terminal.getScrollInvariantLine(row: 0) != nil {
+            knownFirstRow = 0
+            return 0
+        }
+        if terminal.getScrollInvariantLine(row: knownFirstRow) != nil,
+           terminal.getScrollInvariantLine(row: knownFirstRow - 1) == nil {
+            return knownFirstRow
+        }
+        let step = max(terminal.rows, 1)
+        var low = knownFirstRow
+        var high = knownFirstRow + 1
+        var steps = 0
+        while terminal.getScrollInvariantLine(row: high) == nil, steps < 1_000_000 {
+            low = high
+            high += step
+            steps += 1
+        }
+        while high - low > 1 {
+            let middle = (low + high) / 2
+            if terminal.getScrollInvariantLine(row: middle) != nil {
+                high = middle
+            } else {
+                low = middle
+            }
+        }
+        knownFirstRow = high
+        return high
+    }
+
+    private func recordPrompt() {
+        let terminal: Terminal = terminalView.terminal
+        guard !terminal.isCurrentBufferAlternate else { return }
+        // Rows are only known relative to the view, which must be at the live screen.
+        guard !terminalView.canScroll || terminalView.scrollPosition >= 1 else { return }
+        let first = firstBufferRow()
+        promptMarks.prune(below: first)
+        promptMarks.add(first + terminal.getTopVisibleRow() + terminal.getCursorLocation().y)
+    }
+
+    private func scrollToAbsoluteRow(_ row: Int) {
+        let target = row - firstBufferRow()
+        let delta = target - terminalView.terminal.getTopVisibleRow()
+        if delta < 0 {
+            terminalView.scrollUp(lines: -delta)
+        } else if delta > 0 {
+            terminalView.scrollDown(lines: delta)
+        }
+    }
+
+    @objc func jumpToPreviousPrompt(_ sender: Any?) {
+        guard !terminalView.terminal.isCurrentBufferAlternate else { return }
+        let top = firstBufferRow() + terminalView.terminal.getTopVisibleRow()
+        if let row = promptMarks.previous(before: top) {
+            scrollToAbsoluteRow(row)
+        }
+    }
+
+    @objc func jumpToNextPrompt(_ sender: Any?) {
+        guard !terminalView.terminal.isCurrentBufferAlternate else { return }
+        let top = firstBufferRow() + terminalView.terminal.getTopVisibleRow()
+        if let row = promptMarks.next(after: top) {
+            scrollToAbsoluteRow(row)
+        } else {
+            terminalView.scroll(toPosition: 1.0)
+        }
+    }
+
+    // MARK: - View commands
+
+    /// Clears the screen and history. Left alone while a full-screen program is drawing.
+    @objc func clearTerminal(_ sender: Any?) {
+        guard !terminalView.terminal.isCurrentBufferAlternate else { return }
+        terminalView.feed(text: "\u{1B}[H\u{1B}[2J\u{1B}[3J")
+        promptMarks.clear()
+        knownFirstRow = 0
+        if busyProcessName == nil {
+            terminalView.send([0x0C]) // Ctrl-L: the shell redraws its prompt.
+        }
+    }
+
+    @objc func increaseFontSize(_ sender: Any?) { changeFontOffset(by: 1) }
+    @objc func decreaseFontSize(_ sender: Any?) { changeFontOffset(by: -1) }
+
+    @objc func resetFontSize(_ sender: Any?) {
+        fontOffset = 0
+        applyFont()
+    }
+
+    private func changeFontOffset(by delta: Double) {
+        let range = TerminalSettings.fontSizeRange
+        let size = min(max(settings.fontSize + fontOffset + delta, range.lowerBound), range.upperBound)
+        fontOffset = size - settings.fontSize
+        applyFont()
+    }
+
+    private func applyFont() {
+        let range = TerminalSettings.fontSizeRange
+        let size = CGFloat(min(max(settings.fontSize + fontOffset, range.lowerBound), range.upperBound))
+        terminalView.font = NSFont(name: settings.fontName, size: size)
+            ?? NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
+    }
+
+    // MARK: - Colors
+
+    /// The sprite's color, while the terminal is set to match the greeter.
+    private var greeterMatchedAccent: SpriteColor? {
+        settings.matchGreeterColors ? greeterAccent : nil
+    }
+
+    /// Color of the unread ring: the user's choice, then the greeter's, then blue.
+    var ringColor: NSColor {
+        settings.ringColor?.nsColor ?? greeterMatchedAccent.map(Self.nsColor) ?? .systemBlue
+    }
+
+    private static func nsColor(_ color: SpriteColor) -> NSColor {
+        NSColor(
+            srgbRed: CGFloat(color.red) / 255, green: CGFloat(color.green) / 255,
+            blue: CGFloat(color.blue) / 255, alpha: 1
+        )
+    }
+
+    /// Applies the color settings. Matching the greeter sets the palette and cursor but not
+    /// the text color, which has to stay readable on the glass.
+    private func applyColors() {
+        let accent = greeterMatchedAccent
+        terminalView.nativeForegroundColor = settings.textColor.nsColor
+        terminalView.caretColor = accent.map(Self.nsColor) ?? settings.cursorColor.nsColor
+        scrollIndicator?.color = settings.textColor.nsColor
+
+        if settings.backgroundColorEnabled {
+            backgroundOverlay.layer?.backgroundColor =
+                settings.backgroundColor.withAlpha(settings.opacity).nsColor.cgColor
+        } else {
+            backgroundOverlay.layer?.backgroundColor = NSColor.clear.cgColor
+        }
+
+        let palette = accent.map(TerminalPalette.matching(accent:))
+        if palette != installedPalette,
+           let colors = TerminalPalette.swiftTermColors(palette ?? TerminalPalette.standard) {
+            terminalView.installColors(colors)
+            installedPalette = palette
+        }
+        onStatusChange?()
+    }
 
 
 
@@ -309,9 +774,12 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
         terminalView = VidrioTerminalView(frame: view.bounds)
         terminalView.translatesAutoresizingMaskIntoConstraints = false
         terminalView.processDelegate = self
+        installEventProxy()
+        AttentionCenter.shared.register(self)
         terminalView.terminal.registerOscHandler(code: Self.greetOSCCode) { [weak self] _ in
             Task { @MainActor [weak self] in self?.handleGreetRequest() }
         }
+        registerOSCHandlers()
         terminalView.terminal.changeHistorySize(settings.scrollbackLines)
         // The built-in scroller takes columns away from the terminal;
         // `scrollIndicator` shows the position without using any space.
@@ -370,9 +838,25 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
             scrollIndicator.trailingAnchor.constraint(equalTo: terminalView.trailingAnchor)
         ])
 
+        let highlight = LinkHighlightView(frame: view.bounds)
+        highlight.translatesAutoresizingMaskIntoConstraints = false
+        highlight.onMouseMoved = { [weak self] point in
+            self?.updateLinkHighlight(atWindowPoint: NSEvent.modifierFlags.contains(.command) ? point : nil)
+        }
+        highlight.onMouseExited = { [weak self] in self?.updateLinkHighlight(atWindowPoint: nil) }
+        view.addSubview(highlight)
+        NSLayoutConstraint.activate([
+            highlight.topAnchor.constraint(equalTo: terminalView.topAnchor),
+            highlight.bottomAnchor.constraint(equalTo: terminalView.bottomAnchor),
+            highlight.leadingAnchor.constraint(equalTo: terminalView.leadingAnchor),
+            highlight.trailingAnchor.constraint(equalTo: terminalView.trailingAnchor)
+        ])
+        linkHighlight = highlight
+
         // Build shell environment (process starts in viewDidLayout after layout is finalized)
         shellExecutable = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
         var env = ProcessInfo.processInfo.environment
+        env["VIDRIO_PANE_ID"] = paneID
         env["TERM"] = "xterm-256color"
         // SwiftTerm renders 24-bit color. Without this, apps such as Claude Code detect only
         // 256 colors and downgrade their fixed RGB grays to palette entries.
@@ -409,8 +893,12 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
         // .zshrc (and any theme/framework it loads) has already set PROMPT itself.
         greeterConfig = GreeterConfigStore.load()
         greeterSprite = Self.resolveGreeterSprite(config: greeterConfig)
+        // Started from inside another vidrio pane, these would carry that pane's colors.
+        env["SERENO_COLOR"] = nil
+        env["VIDRIO_PROMPT"] = nil
         if let spriteURL = greeterSprite {
             let color = ColorExtractor.resolvedColor(for: spriteURL, overrideHex: greeterConfig.bulletColorHex)
+            greeterAccent = color
             let hex = String(format: "#%02X%02X%02X", color.red, color.green, color.blue)
             env["SERENO_COLOR"] = hex
             env["VIDRIO_PROMPT"] = "%F{\(hex)}●%f %F{\(hex)}%/%f %F{15}"
@@ -421,7 +909,7 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
         }
 
         shellEnvironment = Array(env.map { "\($0.key)=\($0.value)" })
-
+        applyColors()
     }
 
     /// Live-applies appearance settings to an already-open window (blur, background
@@ -443,22 +931,8 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
             terminalView.terminal.changeHistorySize(settings.scrollbackLines)
             updateScrollIndicator(position: terminalView.scrollPosition)
         }
-        scrollIndicator.color = settings.textColor.nsColor
-
-        if settings.backgroundColorEnabled {
-            backgroundOverlay.layer?.backgroundColor =
-                settings.backgroundColor.withAlpha(settings.opacity).nsColor.cgColor
-        } else {
-            backgroundOverlay.layer?.backgroundColor = NSColor.clear.cgColor
-        }
-
-        terminalView.nativeForegroundColor = settings.textColor.nsColor
-        if let font = NSFont(name: settings.fontName, size: CGFloat(settings.fontSize)) {
-            terminalView.font = font
-        } else {
-            terminalView.font = NSFont.monospacedSystemFont(ofSize: CGFloat(settings.fontSize), weight: .regular)
-        }
-        terminalView.caretColor = settings.cursorColor.nsColor
+        applyColors()
+        applyFont()
         terminalView.dimFactor = CGFloat(settings.dimFactor)
         terminalView.trueColorOverrides = Self.grayOverrides(for: settings.secondaryTextColor)
     }
@@ -513,13 +987,21 @@ class TerminalViewController: NSViewController, LocalProcessTerminalViewDelegate
     // MARK: - LocalProcessTerminalViewDelegate
 
     nonisolated func sizeChanged(source: LocalProcessTerminalView, newCols: Int, newRows: Int) {
-        // Handle resize if needed
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            // Reflowing to a new width moves lines, so recorded prompt rows no longer hold.
+            if self.lastColumnCount != 0, self.lastColumnCount != newCols {
+                self.promptMarks.clear()
+            }
+            self.lastColumnCount = newCols
+        }
     }
 
     nonisolated func setTerminalTitle(source: LocalProcessTerminalView, title: String) {
         Task { @MainActor [weak self] in
-            guard let self, !self.isClosing, self.forwardsTitleToWindow,
-                  let window = self.view.window else { return }
+            guard let self, !self.isClosing else { return }
+            self.paneTitle = title
+            guard self.forwardsTitleToWindow, let window = self.view.window else { return }
             window.title = title
         }
     }

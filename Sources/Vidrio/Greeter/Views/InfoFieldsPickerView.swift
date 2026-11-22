@@ -16,10 +16,10 @@ struct InfoFieldsPickerView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Label("Información a mostrar", systemImage: "list.bullet.rectangle")
+                Label("Information to show", systemImage: "list.bullet.rectangle")
                     .font(.headline)
                 Spacer()
-                Button("Cerrar") { dismiss() }
+                Button("Close") { dismiss() }
                     .keyboardShortcut(.cancelAction)
             }
             .padding(14)
@@ -28,9 +28,9 @@ struct InfoFieldsPickerView: View {
             Divider()
 
             List {
-                Section("Mostrando (arrastra para reordenar)") {
+                Section("Showing (drag to reorder)") {
                     if enabledFields.isEmpty {
-                        Text("Ningún dato seleccionado")
+                        Text("Nothing selected")
                             .foregroundColor(.secondary)
                     }
                     ForEach(enabledFields) { field in
@@ -42,7 +42,7 @@ struct InfoFieldsPickerView: View {
                 }
 
                 if !availableFields.isEmpty {
-                    Section("Disponible") {
+                    Section("Available") {
                         ForEach(availableFields) { field in
                             fieldRow(field, isEnabled: false)
                         }

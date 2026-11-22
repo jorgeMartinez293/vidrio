@@ -21,6 +21,11 @@ class TransparentWindow: NSWindow {
     /// app delegate; nil (or a nil session) keeps panes inside the window.
     var makePaneTearOff: ((TransparentWindow, GridViewController, NSPoint) -> PaneTearOffSession?)?
 
+    /// The workspace this window belongs to.
+    var workspaceID: UUID?
+    /// Where the current press started, to tell a ⌘-click from a drag.
+    private var pressLocation: NSPoint?
+
     override func makeFirstResponder(_ responder: NSResponder?) -> Bool {
         let result = super.makeFirstResponder(responder)
         if result {
@@ -56,6 +61,7 @@ class TransparentWindow: NSWindow {
         self.backgroundColor = .clear
         self.isOpaque = false
         self.hasShadow = true
+        self.collectionBehavior.insert(.fullScreenPrimary)
 
         guard let titlebar = standardWindowButton(.closeButton)?.superview else { return }
 
@@ -142,8 +148,29 @@ class TransparentWindow: NSWindow {
 
     /// Intercepted here rather than in `mouseDown` so the drag is ours before
     /// the titlebar starts AppKit's own window move.
+    /// ⌘-Tab leaves with ⌘ down, and its release goes to another app.
+    override func resignKey() {
+        super.resignKey()
+        (contentViewController as? TerminalHosting)?.updateLinkHighlight(atWindowPoint: nil)
+    }
+
     override func sendEvent(_ event: NSEvent) {
         let settings = SettingsStore.shared.current
+        if event.type == .flagsChanged {
+            let point = event.modifierFlags.contains(.command) ? mouseLocationOutsideOfEventStream : nil
+            (contentViewController as? TerminalHosting)?.updateLinkHighlight(atWindowPoint: point)
+        } else if event.type == .leftMouseDragged {
+            (contentViewController as? TerminalHosting)?.updateLinkHighlight(atWindowPoint: nil)
+        }
+        if event.type == .leftMouseDown {
+            pressLocation = event.locationInWindow
+        } else if event.type == .leftMouseUp, event.modifierFlags.contains(.command),
+                  let start = pressLocation,
+                  hypot(event.locationInWindow.x - start.x, event.locationInWindow.y - start.y) <= 4 {
+            (contentViewController as? TerminalHosting)?
+                .terminal(atWindowPoint: event.locationInWindow)?
+                .openLink(atWindowPoint: event.locationInWindow)
+        }
         if event.type == .leftMouseDown, isMergeDragHandle(event) {
             if settings.rearrangeModifier.isHeld(in: event.modifierFlags),
                let session = makeMergeSession?(self) {

@@ -56,6 +56,14 @@ enum ZshPromptShim {
             ZDOTDIR="$HOME"
             [[ -f "$HOME/.zshrc" ]] && source "$HOME/.zshrc"
             [[ -n "$VIDRIO_PROMPT" ]] && PROMPT="$VIDRIO_PROMPT"
+            # OSC 133;A marks where each prompt starts, for jumping between commands. It goes
+            # inside PROMPT because zsh may still move to a new line after precmd, when the
+            # last output didn't end in one. Re-added each time since themes rewrite PROMPT.
+            autoload -Uz add-zsh-hook
+            _vidrio_mark_prompt() {
+              [[ $PROMPT == *$'\\e]133;A'* ]] || PROMPT=$'%{\\e]133;A\\a%}'$PROMPT
+            }
+            add-zsh-hook precmd _vidrio_mark_prompt
             """
             try zshenv.write(to: dir.appendingPathComponent(".zshenv"), atomically: true, encoding: .utf8)
             try zprofile.write(to: dir.appendingPathComponent(".zprofile"), atomically: true, encoding: .utf8)

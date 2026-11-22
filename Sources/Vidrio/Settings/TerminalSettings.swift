@@ -1,5 +1,18 @@
 import Foundation
 
+/// What happens when a program asks to write to the system clipboard (OSC 52).
+enum ClipboardAccess: String, Codable, CaseIterable {
+    case ask, allow, deny
+
+    var displayName: String {
+        switch self {
+        case .ask: return "Ask"
+        case .allow: return "Allow"
+        case .deny: return "Block"
+        }
+    }
+}
+
 /// All user-configurable terminal appearance/launch settings. Value type;
 /// clamped to valid ranges on decode and via `clamped()`.
 struct TerminalSettings: Codable, Equatable {
@@ -27,8 +40,22 @@ struct TerminalSettings: Codable, Equatable {
     var swapModifier: DragModifier
     /// Lines of output each pane keeps above the screen.
     var scrollbackLines: Int
+    /// Derives the ANSI palette, cursor and ring from each pane's greeter sprite.
+    var matchGreeterColors: Bool
+    /// Color of the ring on panes with unread activity. Nil follows the greeter when
+    /// `matchGreeterColors` is on, and is blue otherwise.
+    var ringColor: RGBAColor?
+    var clipboardAccess: ClipboardAccess
+    /// Command that opens clicked files, with `{file}`, `{line}` and `{column}` placeholders.
+    /// Empty uses the file's default app.
+    var editorCommand: String
+    /// Shortcut overrides by `ShortcutAction` raw value. An empty string unbinds the action.
+    var shortcuts: [String: String]
+    var quickTerminalEnabled: Bool
+    var quickTerminalShortcut: String
 
     static let defaultScrollbackLines = 10_000
+    static let defaultQuickTerminalShortcut = "ctrl+option+space"
 
     // Valid ranges.
     static let scrollbackRange = 0...100_000
@@ -63,11 +90,18 @@ struct TerminalSettings: Codable, Equatable {
         backgroundColorEnabled: Bool, backgroundColor: RGBAColor, opacity: Double,
         fontName: String, fontSize: Double,
         textColor: RGBAColor, cursorColor: RGBAColor,
-        dimFactor: Double = TerminalSettings.defaults.dimFactor,
+        dimFactor: Double = 0.5,
         secondaryTextColor: RGBAColor? = nil,
         rearrangeModifier: DragModifier = .command,
         swapModifier: DragModifier = .option,
-        scrollbackLines: Int = TerminalSettings.defaultScrollbackLines
+        scrollbackLines: Int = TerminalSettings.defaultScrollbackLines,
+        matchGreeterColors: Bool = false,
+        ringColor: RGBAColor? = nil,
+        clipboardAccess: ClipboardAccess = .ask,
+        editorCommand: String = "",
+        shortcuts: [String: String] = [:],
+        quickTerminalEnabled: Bool = false,
+        quickTerminalShortcut: String = TerminalSettings.defaultQuickTerminalShortcut
     ) {
         self.cols = cols
         self.rows = rows
@@ -84,6 +118,13 @@ struct TerminalSettings: Codable, Equatable {
         self.rearrangeModifier = rearrangeModifier
         self.swapModifier = swapModifier
         self.scrollbackLines = scrollbackLines
+        self.matchGreeterColors = matchGreeterColors
+        self.ringColor = ringColor
+        self.clipboardAccess = clipboardAccess
+        self.editorCommand = editorCommand
+        self.shortcuts = shortcuts
+        self.quickTerminalEnabled = quickTerminalEnabled
+        self.quickTerminalShortcut = quickTerminalShortcut
     }
 
     /// Decodes missing fields to their default value (via `decodeIfPresent`) so
@@ -107,6 +148,14 @@ struct TerminalSettings: Codable, Equatable {
         self.rearrangeModifier = try c.decodeIfPresent(DragModifier.self, forKey: .rearrangeModifier) ?? d.rearrangeModifier
         self.swapModifier = try c.decodeIfPresent(DragModifier.self, forKey: .swapModifier) ?? d.swapModifier
         self.scrollbackLines = try c.decodeIfPresent(Int.self, forKey: .scrollbackLines) ?? d.scrollbackLines
+        self.matchGreeterColors = try c.decodeIfPresent(Bool.self, forKey: .matchGreeterColors) ?? d.matchGreeterColors
+        self.ringColor = try c.decodeIfPresent(RGBAColor.self, forKey: .ringColor)
+        // An unknown value (saved by a newer vidrio) falls back instead of failing the decode.
+        self.clipboardAccess = (try? c.decodeIfPresent(ClipboardAccess.self, forKey: .clipboardAccess)) ?? d.clipboardAccess
+        self.editorCommand = try c.decodeIfPresent(String.self, forKey: .editorCommand) ?? d.editorCommand
+        self.shortcuts = try c.decodeIfPresent([String: String].self, forKey: .shortcuts) ?? d.shortcuts
+        self.quickTerminalEnabled = try c.decodeIfPresent(Bool.self, forKey: .quickTerminalEnabled) ?? d.quickTerminalEnabled
+        self.quickTerminalShortcut = try c.decodeIfPresent(String.self, forKey: .quickTerminalShortcut) ?? d.quickTerminalShortcut
         self = self.clamped()
     }
 

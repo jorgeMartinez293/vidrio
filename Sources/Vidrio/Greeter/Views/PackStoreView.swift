@@ -14,7 +14,7 @@ struct PackStoreView: View {
                 Label("Packs de sprites", systemImage: "shippingbox")
                     .font(.headline)
                 Spacer()
-                Button("Cerrar") { dismiss() }
+                Button("Close") { dismiss() }
                     .keyboardShortcut(.cancelAction)
             }
             .padding(14)
@@ -25,16 +25,16 @@ struct PackStoreView: View {
             switch store.loadState {
             case .idle, .loading:
                 Spacer()
-                ProgressView("Cargando catálogo...")
+                ProgressView("Loading catalog…")
                 Spacer()
             case .failed:
                 Spacer()
                 VStack(spacing: 10) {
                     Image(systemName: "wifi.exclamationmark")
                         .font(.system(size: 36)).foregroundColor(.secondary)
-                    Text("No se pudo cargar el catálogo")
+                    Text("Couldn’t load the catalog")
                         .foregroundColor(.secondary)
-                    Button("Reintentar") { Task { await store.loadManifest() } }
+                    Button("Retry") { Task { await store.loadManifest() } }
                 }
                 Spacer()
             case .loaded:
@@ -56,7 +56,7 @@ struct PackStoreView: View {
             }
 
             Divider()
-            Text("También puedes arrastrar tus propios .gif o .png a la lista de sprites")
+            Text("You can also drag your own .gif or .png files onto the sprite list")
                 .font(.caption).foregroundColor(.secondary)
                 .padding(.vertical, 8)
         }
@@ -102,7 +102,7 @@ private struct PackRow: View {
                 Button {
                     onDownload()
                 } label: {
-                    Label("Descargar", systemImage: "arrow.down.circle")
+                    Label("Download", systemImage: "arrow.down.circle")
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(accentColor)
@@ -114,7 +114,7 @@ private struct PackRow: View {
                         .font(.caption2).monospacedDigit().foregroundColor(.secondary)
                 }
             case .installed:
-                Label("Instalado", systemImage: "checkmark.circle.fill")
+                Label("Installed", systemImage: "checkmark.circle.fill")
                     .font(.callout)
                     .foregroundColor(.green)
             }

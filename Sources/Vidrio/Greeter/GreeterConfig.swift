@@ -8,8 +8,8 @@ enum DisplayMode: String, Codable, CaseIterable {
     var label: String {
         switch self {
         case .gif: return "GIF"
-        case .image: return "Imagen"
-        case .auto: return "Auto (batería)"
+        case .image: return "Image"
+        case .auto: return "Auto (battery)"
         }
     }
     var icon: String {

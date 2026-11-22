@@ -34,6 +34,74 @@ final class SettingsViewModel: ObservableObject {
             unique.insert(store.current.fontName, at: 0)
         }
         self.monospaceFonts = unique
+        self.hooksInstalled = (try? AgentHooks.isInstalled(in: AgentHooks.readSettings(at: AgentHooks.claudeSettingsFile))) ?? false
+        // Other writers (the clipboard prompt, vaho's themes) change the store directly;
+        // without this, the next edit here would save a stale copy over their change.
+        reloadObserver = NotificationCenter.default.addObserver(
+            forName: Self.storeDidChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.settings != self.store.current else { return }
+                self.settings = self.store.current
+            }
+        }
+    }
+
+    static let storeDidChange = Notification.Name("VidrioSettingsStoreDidChange")
+    /// Never removed: the settings window, and so this model, lives as long as the app.
+    private var reloadObserver: NSObjectProtocol?
+
+    // MARK: - Ring
+
+    var ringColorEnabled: Binding<Bool> {
+        Binding(
+            get: { self.settings.ringColor != nil },
+            set: { self.settings.ringColor = $0 ? RGBAColor(NSColor.systemBlue) : nil }
+        )
+    }
+
+    var ringColorBinding: Binding<Color> {
+        Binding(
+            get: { Color(nsColor: (self.settings.ringColor ?? RGBAColor(NSColor.systemBlue)).nsColor) },
+            set: { self.settings.ringColor = RGBAColor(NSColor($0)) }
+        )
+    }
+
+    // MARK: - Agent hooks
+
+    @Published private var hooksInstalled: Bool
+    @Published private(set) var hooksError: String?
+
+    var agentHooksEnabled: Binding<Bool> {
+        Binding(
+            get: { self.hooksInstalled },
+            set: { enabled in
+                do {
+                    if enabled {
+                        try AgentHooks.install()
+                    } else {
+                        try AgentHooks.uninstall()
+                    }
+                    self.hooksInstalled = enabled
+                    self.hooksError = nil
+                } catch {
+                    self.hooksError = error.localizedDescription
+                }
+            }
+        )
+    }
+
+    // MARK: - Shortcuts
+
+    /// Text of an action's shortcut. Matching the default removes the override, so
+    /// future changes to defaults still reach this action.
+    func shortcutBinding(for action: ShortcutAction) -> Binding<String> {
+        Binding(
+            get: { self.settings.shortcuts[action.rawValue] ?? action.defaultBinding },
+            set: { newValue in
+                self.settings.shortcuts[action.rawValue] = newValue == action.defaultBinding ? nil : newValue
+            }
+        )
     }
 
     func reset() {

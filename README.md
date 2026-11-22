@@ -31,15 +31,44 @@ Every window is a grid of live terminal sessions.
 | Shortcut | Action |
 | --- | --- |
 | `⌘N` | New window |
-| `⌘⇧N` | New pane in the current grid |
+| `⌘⇧N` | New pane in the current grid, in the same directory |
 | `⌘←` `⌘→` `⌘↑` `⌘↓` | Move focus between panes |
+| `⌃1…9` | Focus a pane directly |
+| `⌘⇧↩` | Zoom the focused pane to the whole window and back. While zoomed, `⌘←` and `⌘→` walk through every pane as one row |
 | `⌘W` | Close the focused pane (closes the window when it is the last one) |
+| `⌘⇧P` | Command palette: run any action or jump to any pane |
+| `⌘⇧O` | Switch workspace |
+| `⌥⌘N` | New workspace |
+| `⌃⌘←` `⌃⌘→` | Previous or next workspace |
+| `⌘⇧U` | Jump to the latest pane with unread activity |
+| `⌘F` `⌘G` `⌘⇧G` | Find in the pane's output, next, previous |
+| `⌥⌘↑` `⌥⌘↓` | Jump to the previous or next shell prompt |
+| `⌘K` | Clear the screen and history |
+| `⌘+` `⌘-` `⌘0` | Change the pane's font size, or reset it |
+| `⌃⌘F` | Toggle full screen |
+| `⌘-click` | Open a URL, or a file path such as `main.swift:42`. Holding `⌘` underlines what can be opened |
 | `⌘-drag` a pane | Move it to a new row or column |
 | `⌥-drag` a pane | Swap it with another pane |
 | `⌘-drag` a window | Merge it into another window |
 | `⌘-drag` a pane onto another window | Move it into that window |
 | `⌘-drag` a pane outside any window | Open it in a new window |
 | `⌘,` | Settings |
+
+Every action's shortcut can be changed in Settings, including two-step chords like `ctrl+b c`.
+
+## Working with agents
+
+- **Notifications.** Programs can notify through OSC 9, 99 or 777. Panes you aren't looking at get a ring, a Dock badge and a desktop notification. The ring's color can be changed in Settings.
+- **Pane status.** A dot shows whether the agent in a pane is working, waiting for you, done or stopped with an error. Turn on *Show Claude Code status on panes* in Settings to install the hooks. Any other tool can set the dot by writing `OSC 7771` with `working`, `waiting`, `done`, `error` or `ended`:
+
+  ```sh
+  printf '\033]7771;working\007'
+  ```
+
+## Workspaces
+
+- **Workspaces.** Named groups of windows, typically one per project. The switcher shows each one's directory, git branch and listening ports.
+- **Quick terminal.** An optional global shortcut drops a terminal from the top of the screen, over any app.
 
 ## Look and feel
 
@@ -53,6 +82,8 @@ Every window is a grid of live terminal sessions.
 ## Greeter
 
 New windows can open with an animated sprite and a short system info line. It can show a GIF, a still image, or switch automatically based on battery.
+
+Turn on *Match colors to greeter sprite* in Settings to give each pane a palette, cursor and attention ring that go with its sprite.
 
 ## Requirements
 

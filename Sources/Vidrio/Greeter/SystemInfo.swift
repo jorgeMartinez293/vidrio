@@ -40,25 +40,25 @@ enum InfoField: String, Codable, CaseIterable, Identifiable {
     /// Label shown for this field in the Greeter panel's info picker.
     var title: String {
         switch self {
-        case .os: return "Sistema operativo"
+        case .os: return "Operating system"
         case .kernel: return "Kernel"
         case .shell: return "Shell"
         case .terminal: return "Terminal"
-        case .theme: return "Tema de interfaz"
-        case .display: return "Resolución de pantalla"
-        case .uptime: return "Tiempo encendido"
-        case .cpu: return "Procesador"
-        case .memory: return "Memoria RAM"
-        case .disk: return "Disco"
-        case .host: return "Modelo de Mac"
-        case .architecture: return "Arquitectura"
+        case .theme: return "Interface theme"
+        case .display: return "Display resolution"
+        case .uptime: return "Uptime"
+        case .cpu: return "Processor"
+        case .memory: return "Memory"
+        case .disk: return "Disk"
+        case .host: return "Mac model"
+        case .architecture: return "Architecture"
         case .gpu: return "GPU"
-        case .battery: return "Batería"
-        case .loadAverage: return "Carga del sistema"
-        case .packages: return "Paquetes (Homebrew)"
-        case .locale: return "Idioma y región"
-        case .hostname: return "Nombre del equipo"
-        case .username: return "Usuario"
+        case .battery: return "Battery"
+        case .loadAverage: return "System load"
+        case .packages: return "Packages (Homebrew)"
+        case .locale: return "Language and region"
+        case .hostname: return "Computer name"
+        case .username: return "User"
         }
     }
 
@@ -229,7 +229,7 @@ enum SystemInfo {
         MTLCreateSystemDefaultDevice()?.name ?? "unknown"
     }
 
-    /// Charge percentage and power source, or "sin batería" on a desktop Mac.
+    /// Charge percentage and power source, or "unknown" on a desktop Mac.
     private static func batteryStatus() -> String {
         guard let snapshot = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
               let sources = IOPSCopyPowerSourcesList(snapshot)?.takeRetainedValue() as? [CFTypeRef],
@@ -239,7 +239,7 @@ enum SystemInfo {
         else { return "unknown" }
         let state = description[kIOPSPowerSourceStateKey] as? String
         let charging = description[kIOPSIsChargingKey] as? Bool ?? false
-        let suffix = state == kIOPSACPowerValue ? (charging ? " (cargando)" : " (con cargador)") : ""
+        let suffix = state == kIOPSACPowerValue ? (charging ? " (charging)" : " (plugged in)") : ""
         return "\(capacity)%\(suffix)"
     }
 

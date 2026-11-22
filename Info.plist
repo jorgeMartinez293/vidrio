@@ -43,7 +43,7 @@
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>
-	<string>vidrio — familia vaho</string>
+	<string>vidrio — vaho family</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Programs run in vidrio may use the microphone.</string>
 	<key>SUEnableAutomaticChecks</key>

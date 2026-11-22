@@ -30,11 +30,11 @@ enum BlurMaterial: String, Codable, CaseIterable {
         switch self {
         case .hudWindow: return "HUD"
         case .popover: return "Popover"
-        case .sidebar: return "Barra lateral"
-        case .fullScreenUI: return "Pantalla completa"
-        case .underWindowBackground: return "Bajo ventana"
-        case .menu: return "Menú"
-        case .none: return "Ninguno"
+        case .sidebar: return "Sidebar"
+        case .fullScreenUI: return "Full Screen"
+        case .underWindowBackground: return "Under Window"
+        case .menu: return "Menu"
+        case .none: return "None"
         }
     }
 }

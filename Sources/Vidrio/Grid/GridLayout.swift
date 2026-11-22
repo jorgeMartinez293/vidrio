@@ -278,6 +278,15 @@ enum GridLayout {
         return Result(frames: frames, columnOf: columnOf, rowOf: rowOf, indexAt: columns)
     }
 
+    /// The pane `offset` places away from `index` when all panes are read as one row,
+    /// column by column, wrapping around at the ends.
+    static func neighborInRow(of index: Int, offset: Int, columns: [[Int]]) -> Int {
+        let order = columns.flatMap { $0 }
+        guard let position = order.firstIndex(of: index) else { return index }
+        let count = order.count
+        return order[((position + offset) % count + count) % count]
+    }
+
     /// The pane index that should gain focus moving `direction` from
     /// `index`, or `index` unchanged if there's nowhere to go that way.
     /// Up/down stay within the column; left/right land on the pane in the

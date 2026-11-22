@@ -9,6 +9,10 @@ protocol TerminalHosting: AnyObject {
     func applySettings(_ newSettings: TerminalSettings)
     /// Programs that closing this host would interrupt.
     var busyProcessNames: [String] { get }
+    /// The terminal under a point in window coordinates.
+    func terminal(atWindowPoint point: NSPoint) -> TerminalViewController?
+    /// Underlines the link at a point in window coordinates. Nil removes any underline.
+    func updateLinkHighlight(atWindowPoint point: NSPoint?)
 }
 
 extension TerminalViewController: TerminalHosting {}
@@ -32,6 +36,8 @@ class GridViewController: NSViewController, TerminalHosting {
         /// at its final size and this is what shows around it instead of a
         /// bare gap.
         let cellBackdrop: BackdropView
+        /// Unread ring and agent status dot, above the terminal.
+        let statusView: PaneStatusView
         var isClosing = false
     }
 
@@ -45,6 +51,8 @@ class GridViewController: NSViewController, TerminalHosting {
     /// A pane torn off another window, which this grid starts with instead
     /// of spawning a fresh shell. Set before the window first appears.
     var initialPane: TerminalViewController?
+    /// The pane filling the window, if any. The others keep their terminal size while hidden.
+    private weak var zoomedPane: TerminalViewController?
     /// Applied to every pane as it's created, and live-reloaded onto all
     /// existing panes via `applySettings`.
     var settings: TerminalSettings = .defaults
@@ -145,8 +153,13 @@ class GridViewController: NSViewController, TerminalHosting {
 
     @discardableResult
     private func addPane() -> TerminalViewController {
+        exitZoom()
         let controller = TerminalViewController()
         controller.settings = settings
+        // A new pane continues where the focused one is working.
+        if panes.indices.contains(focusedIndex) {
+            controller.initialDirectory = panes[focusedIndex].controller.currentDirectory
+        }
         attach(controller)
         focusedIndex = panes.count - 1
         applyChrome()
@@ -156,6 +169,7 @@ class GridViewController: NSViewController, TerminalHosting {
         // right values the first time instead of via a redundant live-patch.
         let cell = panes[panes.count - 1].cell
         cell.addSubview(controller.view)
+        installStatusView(of: panes[panes.count - 1])
         addChild(controller)
         view.addSubview(cell, positioned: .below, relativeTo: slotPreview)
         relayout(animated: true)
@@ -186,10 +200,99 @@ class GridViewController: NSViewController, TerminalHosting {
         let cellBackdrop = BackdropView()
         cell.addSubview(cellBackdrop)
 
-        panes.append(Pane(controller: controller, cell: cell, cellBackdrop: cellBackdrop))
+        let statusView = PaneStatusView()
+        statusView.update(
+            unread: controller.hasUnreadActivity, agentState: controller.agentState, ringColor: controller.ringColor
+        )
+        controller.onStatusChange = { [weak statusView, weak controller] in
+            guard let controller else { return }
+            statusView?.update(
+                unread: controller.hasUnreadActivity, agentState: controller.agentState, ringColor: controller.ringColor
+            )
+        }
+
+        panes.append(Pane(controller: controller, cell: cell, cellBackdrop: cellBackdrop, statusView: statusView))
         if placingInColumns {
             columns = GridLayout.appending(panes.count - 1, to: columns)
         }
+    }
+
+    /// Puts the status overlay above the terminal, once the terminal is in its cell.
+    private func installStatusView(of pane: Pane) {
+        pane.statusView.frame = pane.cell.bounds
+        pane.cell.addSubview(pane.statusView, positioned: .above, relativeTo: pane.controller.view)
+    }
+
+    // MARK: - Pane queries
+
+    /// Live panes, in reading order.
+    var paneControllers: [TerminalViewController] {
+        columns.flatMap { $0 }.map { panes[$0].controller }
+    }
+
+    func isFocused(_ controller: TerminalViewController) -> Bool {
+        panes.indices.contains(focusedIndex) && panes[focusedIndex].controller === controller
+    }
+
+    func terminal(atWindowPoint point: NSPoint) -> TerminalViewController? {
+        let local = view.convert(point, from: nil)
+        return panes.first { !$0.isClosing && !$0.cell.isHidden && $0.cell.frame.contains(local) }?.controller
+    }
+
+    func updateLinkHighlight(atWindowPoint point: NSPoint?) {
+        let target = point.flatMap { terminal(atWindowPoint: $0) }
+        for pane in panes {
+            pane.controller.updateLinkHighlight(atWindowPoint: pane.controller === target ? point : nil)
+        }
+    }
+
+    /// Moves keyboard focus to `controller`.
+    func focus(_ controller: TerminalViewController) {
+        guard let index = panes.firstIndex(where: { $0.controller === controller }) else { return }
+        setFocus(to: index)
+    }
+
+    private func setFocus(to index: Int) {
+        if index != focusedIndex {
+            focusedIndex = index
+            if zoomedPane != nil {
+                zoomedPane = panes[index].controller
+            }
+            applyChrome()
+            relayout(animated: true)
+        }
+        focusFocusedPane()
+    }
+
+    // MARK: - Zoom
+
+    @objc func toggleZoomPane(_ sender: Any?) {
+        guard panes.count > 1, panes.indices.contains(focusedIndex) else { return }
+        if zoomedPane != nil {
+            exitZoom()
+        } else {
+            zoomedPane = panes[focusedIndex].controller
+        }
+        applyChrome()
+        relayout(animated: true)
+        focusFocusedPane()
+    }
+
+    /// Back to the regular grid. Callers that change the panes relayout right after.
+    private func exitZoom() {
+        guard zoomedPane != nil else { return }
+        zoomedPane = nil
+        for pane in panes where !pane.isClosing {
+            pane.cell.isHidden = false
+        }
+    }
+
+    /// `⌃1…9`: focuses that pane in reading order. The menu item's tag is the number.
+    @objc func focusPaneByNumber(_ sender: Any?) {
+        guard let number = (sender as? NSMenuItem)?.tag else { return }
+        let order = columns.flatMap { $0 }
+        guard order.indices.contains(number - 1) else { return }
+        setFocus(to: order[number - 1])
     }
 
     // MARK: - Merging windows
@@ -214,6 +317,7 @@ class GridViewController: NSViewController, TerminalHosting {
         controllers: [TerminalViewController], columnCounts: [Int], focusedOffset: Int
     ) {
         endPaneDrag(cancelled: true)
+        exitZoom()
         let order = columns.flatMap { $0 }
         let controllers = order.map { panes[$0].controller }
         let columnCounts = self.columnCounts
@@ -243,6 +347,7 @@ class GridViewController: NSViewController, TerminalHosting {
     ) -> NSRect {
         guard !controllers.isEmpty else { return .zero }
         endPaneDrag(cancelled: true)
+        exitZoom()
         isPreviewingMerge = false
         slotPreview.hide(animated: true)
         let first = panes.count
@@ -268,6 +373,7 @@ class GridViewController: NSViewController, TerminalHosting {
             // hierarchy without tearing anything down — the shell keeps
             // running and only sees one SIGWINCH for its new size.
             pane.cell.addSubview(pane.controller.view)
+            installStatusView(of: pane)
             addChild(pane.controller)
             view.addSubview(pane.cell, positioned: .below, relativeTo: slotPreview)
         }
@@ -322,6 +428,7 @@ class GridViewController: NSViewController, TerminalHosting {
     ) {
         let incomingCount = incomingColumnCounts.reduce(0, +)
         guard incomingCount > 0, !panes.isEmpty, paneDrag == nil else { return }
+        exitZoom()
         isPreviewingMerge = true
         let first = panes.count
         let layout = GridLayout.compute(
@@ -390,8 +497,15 @@ class GridViewController: NSViewController, TerminalHosting {
         guard let idx = panes.firstIndex(where: { $0.controller.owns(responder) }),
               idx != focusedIndex else { return }
         focusedIndex = idx
+        AttentionCenter.shared.markRead(panes[idx].controller)
         applyChrome()
         relayout(animated: true)
+    }
+
+    /// The window came forward: the pane in focus is now being looked at.
+    func markFocusedPaneRead() {
+        guard panes.indices.contains(focusedIndex) else { return }
+        AttentionCenter.shared.markRead(panes[focusedIndex].controller)
     }
 
     private func closePane(_ controller: TerminalViewController) {
@@ -399,6 +513,7 @@ class GridViewController: NSViewController, TerminalHosting {
               !panes[idx].isClosing else { return }
         // Pane indices are about to shift under the drag; put it back first.
         endPaneDrag(cancelled: true)
+        exitZoom()
 
         // Its program ended while the user was being asked: nothing left to confirm.
         if paneAwaitingCloseConfirmation === controller, let window = view.window,
@@ -477,21 +592,27 @@ class GridViewController: NSViewController, TerminalHosting {
 
     private func moveFocus(_ direction: GridLayout.Direction) {
         guard panes.count > 1 else { return }
+        // Zoomed, the grid isn't on screen to navigate by: left and right walk every pane
+        // as a single row.
+        if zoomedPane != nil, direction == .left || direction == .right {
+            setFocus(to: GridLayout.neighborInRow(
+                of: focusedIndex, offset: direction == .right ? 1 : -1, columns: columns
+            ))
+            return
+        }
         let layout = GridLayout.compute(
             columns: columns, focusedIndex: focusedIndex, bounds: view.bounds,
             spacing: spacing, focusWeight: focusWeight
         )
         let newIndex = GridLayout.move(from: focusedIndex, direction: direction, layout: layout)
         guard newIndex != focusedIndex else { return }
-        focusedIndex = newIndex
-        applyChrome()
-        relayout(animated: true)
-        focusFocusedPane()
+        setFocus(to: newIndex)
     }
 
     private func focusFocusedPane() {
         guard focusedIndex < panes.count else { return }
         panes[focusedIndex].controller.focusTerminal()
+        AttentionCenter.shared.markRead(panes[focusedIndex].controller)
     }
 
     // MARK: - Layout
@@ -505,9 +626,19 @@ class GridViewController: NSViewController, TerminalHosting {
         // A drag lays the grid out itself, as a preview; the real layout
         // only changes on the drop.
         guard paneDrag == nil, !isPreviewingMerge else { return }
-        let frames = targetFrames()
-        let sizes = terminalSizes(for: frames)
-        let applyFrames = {
+        var frames = targetFrames()
+        var sizes = terminalSizes(for: frames)
+        // Zoomed, one pane takes the window. The rest are hidden but keep their usual
+        // terminal size, so their programs don't redraw for a layout nobody can see.
+        if let zoomedPane, let zoomed = panes.firstIndex(where: { $0.controller === zoomedPane }) {
+            let full = view.backingAlignedRect(view.bounds, options: .alignAllEdgesNearest)
+            frames[zoomed] = full
+            sizes[zoomed] = full.size
+            for (idx, pane) in panes.enumerated() where !pane.isClosing {
+                pane.cell.isHidden = idx != zoomed
+            }
+        }
+        let applyFrames = { [frames, sizes] in
             for (idx, pane) in self.panes.enumerated() {
                 let target = frames[idx]
                 if self.springs.isAnimating(pane.cell) {
@@ -604,8 +735,8 @@ class GridViewController: NSViewController, TerminalHosting {
     /// keeps its terminal text from running under them. Only the focused
     /// pane forwards its shell's OSC title to the window.
     private func applyChrome() {
-        let single = panes.count == 1
         for (idx, pane) in panes.enumerated() {
+            let single = panes.count == 1 || pane.controller === zoomedPane
             let radius: CGFloat = single ? 28 : 16
             let insets = single ? Self.singlePaneInsets : Self.gridPaneInsets
             pane.controller.cornerRadius = radius
@@ -621,6 +752,7 @@ class GridViewController: NSViewController, TerminalHosting {
             pane.cell.layer?.cornerRadius = radius
 
             pane.cellBackdrop.cornerRadius = radius
+            pane.statusView.cornerRadius = radius
             pane.cellBackdrop.apply(settings.blurMaterial)
         }
     }
@@ -632,7 +764,7 @@ class GridViewController: NSViewController, TerminalHosting {
 
     /// Whether a ⌘-drag starting at `windowPoint` would lift a pane.
     func canDragPane(at windowPoint: NSPoint) -> Bool {
-        paneDrag == nil && paneIndex(at: view.convert(windowPoint, from: nil)) != nil
+        paneDrag == nil && zoomedPane == nil && paneIndex(at: view.convert(windowPoint, from: nil)) != nil
     }
 
     /// Lifts the pane under `windowPoint` out of the grid: it takes focus,
@@ -642,7 +774,8 @@ class GridViewController: NSViewController, TerminalHosting {
     @discardableResult
     func beginPaneDrag(at windowPoint: NSPoint) -> Bool {
         let point = view.convert(windowPoint, from: nil)
-        guard paneDrag == nil, !isPreviewingMerge, let idx = paneIndex(at: point) else { return false }
+        guard paneDrag == nil, !isPreviewingMerge, zoomedPane == nil,
+              let idx = paneIndex(at: point) else { return false }
         let pane = panes[idx]
         let start = springs.presentedFrame(of: pane.cell) ?? pane.cell.frame
         let size = pane.controller.view.frame.size
