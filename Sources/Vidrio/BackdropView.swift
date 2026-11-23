@@ -39,20 +39,24 @@ final class BackdropView: NSView {
         wantsLayer = true
         layer?.masksToBounds = true
         effectView.frame = bounds
-        effectView.autoresizingMask = [.width, .height]
         addSubview(effectView)
 
         if #available(macOS 26.0, *) {
             let dimming = NSView(frame: bounds)
             dimming.wantsLayer = true
             dimming.layer?.backgroundColor = Self.glassDimming.cgColor
-            dimming.autoresizingMask = [.width, .height]
             addSubview(dimming)
         }
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    /// Autoresizing applies size deltas, and glass can drift from this view
+    /// across animated resizes, leaving part of the pane unblurred.
+    override func resizeSubviews(withOldSize oldSize: NSSize) {
+        subviews.forEach { $0.frame = bounds }
     }
 
     var cornerRadius: CGFloat {
